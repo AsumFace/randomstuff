@@ -34,6 +34,21 @@ struct Stack(T)
         entryStore = makeArray!T(stackAllocator, size);
         enforce(entryStore !is null, new AllocationFailure("Stack construction failed due to allocation failure"));
     }
+    ref T opIndex(size_t i)
+    {
+        return entries[i];
+    }
+    size_t opDollar()
+    {
+        return entries.length;
+    }
+    typeof(this) reap()
+    {
+        typeof(this) result = this;
+        entryStore = null;
+        entries = null;
+        return result;
+    }
     typeof(this) dup()
     {
         typeof(this) result;
@@ -46,6 +61,10 @@ struct Stack(T)
             result.entries = newStore;
         }
         return result;
+    }
+    typeof(this) save()
+    {
+        return this;
     }
     void destroy()
     {
@@ -96,7 +115,7 @@ struct Stack(T)
             enforce(newStore !is null, new AllocationFailure("Stack expansion failed due to allocation failure"));
             entryStore = newStore;
         }
-        if (entries !is null
+        if (entries.length != 0
             && &entryStore[$ - 1] == &entries[$ - 1]) // no space left for insertion
         {
             if (entryStore.ptr != entries.ptr) // entries can be moved to front of entryStore
@@ -115,11 +134,11 @@ struct Stack(T)
         entries = entryStore[0 .. entries.length + 1];
         entries[$ - 1] = value;
     }
-    bool empty()
+    bool empty() const
     {
         return entries.empty;
     }
-    size_t length()
+    size_t length() const
     {
         return entries.length;
     }

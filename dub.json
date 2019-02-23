@@ -4,9 +4,8 @@
 		"asumface"
 	],
 	"dependencies": {
-        "gfm": "~>9999.0.0"
-
-	},
+        "gfm:math": "~>9999.0.0"
+        	},
 	"description": "A minimal D application.",
 	"copyright": "Copyright © 2018, asumface",
 	"license": "proprietary",

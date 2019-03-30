@@ -1,0 +1,17 @@
+inc = include_directories('../..')
+
+gfm_math_sources = [
+    'package.d',
+    'box.d',
+    'funcs.d',
+    'matrix.d',
+    'quaternion.d',
+    'shapes.d',
+    'simplerng.d',
+    'vector.d']
+
+gfm_math = library('gfm_math',
+           gfm_math_sources,
+           include_directories: inc)
+
+# declare_dependency(link_with : gfm_math, include_directories : inc)

@@ -6,6 +6,7 @@ import std.experimental.allocator.mallocator;
 import std.experimental.allocator.building_blocks.bitmapped_block;
 import std.experimental.allocator.building_blocks.allocator_list;
 import std.experimental.allocator.gc_allocator;
+import required;
 
 class AllocationFailure : Exception
 {
@@ -20,7 +21,9 @@ FallbackAllocator!(AllocatorList!((n => BitmappedBlock!(1024,
                                   Mallocator),
                                   Mallocator) stackAllocator;
 
-
+/**
+A loosely stack-like data structure using manual memory management.
+*/
 struct Stack(T)
 {
     import std.experimental.allocator;
@@ -42,6 +45,11 @@ struct Stack(T)
     {
         return entries.length;
     }
+    /**
+    Invalidates `this` and transfers all its resources to `return`.
+    Does not invalidate any pointers to elements.
+    Does not invalidate dependent copies.
+    */
     typeof(this) reap()
     {
         typeof(this) result = this;
@@ -49,6 +57,9 @@ struct Stack(T)
         entries = null;
         return result;
     }
+    /**
+    Creates an independent copy of the `Stack`. Will allocate.
+    */
     typeof(this) dup()
     {
         typeof(this) result;
@@ -62,10 +73,21 @@ struct Stack(T)
         }
         return result;
     }
+    /**
+    Creates a dependent copy of the `Stack`.
+    */
     typeof(this) save()
     {
-        return this;
+        typeof(this) result;
+        result.entryStore = null;
+        result.entries = entries;
+        return result;
     }
+    /**
+    Destructor.
+    Invalidates pointers to elements.
+    Invalidates dependent copies.
+    */
     void destroy()
     {
         import std.algorithm.mutation : fill;
@@ -73,6 +95,10 @@ struct Stack(T)
         if (entryStore !is null)
             dispose(stackAllocator, entryStore.ptr);
     }
+    /**
+    Clears the `Stack` without deallocating resources. Beware of stale pointers to former elements.
+    Invalidates dependent copies.
+    */
     void clear()
     {
         import std.algorithm.mutation : fill;
@@ -81,30 +107,33 @@ struct Stack(T)
     }
     ref T front() @property
     {
-        assert(!this.empty, "attempted to get front of empty stack");
+        require(!this.empty, "attempted to get front of empty stack");
         return entries[$ - 1];
     }
     void popFront()
     {
-        assert(!this.empty, "attempted to popFront of empty stack");
-        entries[$ - 1] = T.init;
+        require(!this.empty, "attempted to popFront of empty stack");
         entries = entries[0 .. $ - 1];
     }
     ref T back() @property
     {
-        assert(!this.empty, "attempted to get back of empty stack");
+        require(!this.empty, "attempted to get back of empty stack");
         return entries[0];
     }
     void popBack()
     {
-        assert(!this.empty, "attempted to popBack of empty stack");
-        entries[0] = T.init;
+        require(!this.empty, "attempted to popBack of empty stack");
         entries = entries[1 .. $];
     }
+    /**
+    Push a new value onto the `Stack`, allocates as neccessary.
+    May invalidate pointers to elements.
+    Invalidates dependent copies.
+    */
     void pushFront(T value)
     {
         import std.conv;
-        assert (entries is null
+        require(entries is null
                 || entries is null && entryStore is null
                 || entries.ptr >= entryStore.ptr
                 && entries.ptr + entries.length <= entryStore.ptr + entryStore.length);
@@ -127,6 +156,7 @@ struct Stack(T)
             else // otherwise allocate new space
             {
                 import std.algorithm.comparison : max;
+                // TODO: try regular allocation if expansion fails
                 enforce(expandArray(stackAllocator, entryStore, max(entryStore.length, 8)),
                         new AllocationFailure("Stack expansion failed due to allocation failure"));
             }

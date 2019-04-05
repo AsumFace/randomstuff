@@ -14,7 +14,7 @@ class AllocationFailure : Exception
 }
 
 import required;
-import gfm.math;
+import cgfm.math;
 import stack;
 import std.traits;
 import std.experimental.allocator.common;
@@ -23,53 +23,165 @@ import std.experimental.allocator.building_blocks.bitmapped_block;
 import std.experimental.allocator.mallocator;
 import std.experimental.allocator;
 
-private struct RTreeRange(RTree, alias shouldEnterBox, alias matchesPattern)
-    if (isCallable!shouldEnterBox && isCallable!matchesPattern)
+/**
+A range to search for matching elements within an `RTree`. `ref` access is provided in order to be able to change
+element data, however the bounding box must never increase in size, a decrease is tolerable but might result in a
+suboptimal tree structure. In general, a removal and reinsertion is to be preferred if the bounds may change.
+The range can either accept dynamically exchangable, or static predicate callables. If a second parameter is accepted,
+it shall have the type of a common data storage type, such as a `Tuple`. This auxiliary data is returned by `front` as
+part of a `Tuple` and is meant to make basic data exchange between the predicates and the range interface possible.
+*/
+private struct RTreeRange(RTree, bool dynamic, A...)
+
 {
+    // *BLING* *BLING* useful error messages!
+    static assert(A.length == 2, "wrong number of template arguments (need 4, got " ~ (A.length + 2).stringof ~ ")");
+    static assert(isCallable!(A[0]), A[0].stringof ~ " is not a callable");
+    static assert(isCallable!(A[1]), A[1].stringof ~ " is not a callable");
+    static assert(arity!(A[0]) == 1 || arity!(A[1]) == 2, A[0].stringof
+                  ~ " takes wrong number of arguments (must take 1 or 2, takes " ~ arity!(A[0]).stringof ~ ")");
+    static assert(arity!(A[1]) == 1 || arity!(A[1]) == 2, A[1].stringof
+                  ~ " takes wrong number of arguments (must take 1 or 2, takes " ~ arity!(A[1]).stringof ~ ")");
+    static assert(is(Parameters!(A[0])[0] : RTree.BoxType),
+                  A[0].stringof ~ " doesn't accept " ~ RTree.BoxType.stringof);
+    static assert(is(Parameters!(A[1])[0] : RTree.ElementType),
+                  A[1].stringof ~ " doesn't accept " ~ RTree.ElementType.stringof);
+    static assert(is(ReturnType!(A[0]) : bool), A[0].stringof ~ " doesn't return a bool compatible type");
+    static assert(is(ReturnType!(A[1]) : bool), A[1].stringof ~ " doesn't return a bool compatible type");
+
+    static if (arity!(A[0]) == 2 || arity!(A[1]) == 2) // provide auxiliary storage
+    {
+        static if ((arity!(A[0]) == 2 && arity!(A[1]) == 2))
+        {
+            import std.algorithm.comparison : among;
+            static assert (is(Parameters!(A[0])[1] == Parameters!(A[1])[1]),
+                           "second parameters of predicates don't take the same type");
+            static if (is(A[0] == struct) || is(A[0] == class) || is(A[0] == interface))
+                static assert (among("ref", __traits(getParameterStorageClasses, A[0].opCall, 1)),
+                               "second parameter of " ~ A[0].stringof ~ " isn't ref");
+            else
+                static assert (__traits(getParameterStorageClasses, A[0], 1).any("ref"),
+                               "second parameter of " ~ A[0].stringof ~ " isn't ref");
+            static if (is(A[1] == struct) || is(A[1] == class) || is(A[1] == interface))
+                static assert (among("ref", __traits(getParameterStorageClasses, A[1].opCall, 1)),
+                               "second parameter of " ~ A[1].stringof ~ " isn't ref");
+            else
+                static assert (__traits(getParameterStorageClasses, A[1], 1).any("ref"),
+                               "second parameter of " ~ A[1].stringof ~ " isn't ref");
+        }
+        static if (arity!(A[0]) == 2)
+            alias AuxDataType = Parameters!(A[0])[1];
+        else static if (arity!(A[1]) == 2)
+            alias AuxDataType = Parameters!(A[1])[1];
+
+        AuxDataType aux;
+    }
+
     alias ReferenceType = RTree.ReferenceType;
     alias ElementType = RTree.ElementType;
-    private auto vs = Stack!(ReferenceType[])(8);
+    alias BoxType = RTree.BoxType;
+    alias SeT = Tuple!(ReferenceType, "nd", size_t, "skip");
+    private Stack!SeT vs;
     private ElementType* _front;
 
-    this(RTree tree)
+    ~this()
     {
-        vs.pushFront(tree.rootNode[]);
-        popFront;
+        destroy;
+    }
+
+    void destroy()
+    {
+        vs.destroy;
+    }
+
+    static if (dynamic)
+    {
+        A[0] shouldEnterBox;
+        A[1] matchesPattern;
+
+        this(RTree tree, A[0] a, A[1] b)
+        {
+            vs = Stack!SeT(8);
+            vs.pushFront(SeT(ReferenceType(*tree.rootPtr), 0));
+            shouldEnterBox = a;
+            matchesPattern = b;
+            _popFront;
+        }
+    }
+    else
+    {
+        //static assert(__traits(compiles, A[0](RTree.BoxType.init)));
+        //auto see = (){ElementType n; A[1](n);}();
+        //static assert(__traits(compiles, (){ElementType n; A[1](n);}()));
+        alias shouldEnterBox = A[0];
+        alias matchesPattern = A[1];
+
+        this(RTree tree)
+        {
+            vs = Stack!SeT(8);
+            vs.pushFront(SeT(ReferenceType(*tree.rootPtr), 0));
+            _popFront;
+        }
     }
 
     void popFront()
     {
-        import std.algorithm.searching : find;
+        require(_front !is null);
+        _popFront;
+    }
+    private void _popFront()
+    {
+        import std.algorithm.searching : countUntil;
         while (!vs.empty)
         {
-            if (vs.front.type == ReferenceType.Types.leaf)
+            if (vs.front.nd.type == ReferenceType.Types.leaf)
             {
-                import std.range : drop;
-                auto sr = vs.front.leaf[].find((ref n) => &n is _front).drop(1).find(matchesPattern);
-                if (!sr.empty)
-                {
-                    _front = &(sr.front());
-                    break;
-                }
+                static if (arity!(A[1]) == 1)
+                    alias pm = (ref ElementType n) => matchesPattern(n);
                 else
+                    alias pm = (ref ElementType n) => matchesPattern(n, aux);
+                auto c = vs.front.nd.leaf[].drop(vs.front.skip).countUntil!pm;
+                if (c == -1) // no matching elements left in leaf
+                {
                     vs.popFront;
-            }
-            auto sr = vs.front.node[].find(shouldEnterBox);
-            if (!sr.empty)
-            {
-                auto pe = sr.front;
-                vs.front = vs.front[1 .. $];
-                vs.pushFront(pe);
+                    continue;
+                }
+                auto index = vs.front.skip + c;
+                _front = &(vs.front.nd.leaf[index]);
+                vs.front.skip += c + 1;
+                if (vs.front.skip >= RTree.maxChildrenPerNode)
+                    vs.popFront;
+                return;
             }
             else
-                vs.popFront;
+            {
+                static if (arity!(A[0]) == 1)
+                    alias sb = (ref ReferenceType n) => shouldEnterBox(n.box);
+                else
+                    alias sb = (ref ReferenceType n) => shouldEnterBox(n.box, aux);
+                auto c = vs.front.nd.node[].drop(vs.front.skip).countUntil!sb;
+                if (c == -1) // no boxes to enter left in node
+                {
+                    vs.popFront;
+                    continue;
+                }
+                auto index = vs.front.skip + c;
+                auto selectedRef = vs.front.nd.node[index];
+                vs.front.skip += c + 1;
+                if (vs.front.skip >= RTree.maxChildrenPerNode)
+                    vs.popFront;
+                vs.pushFront(SeT(selectedRef, 0));
+            }
         }
+        _front = null;
     }
 
-    ref ElementType front()
+    private ref ElementType efront()
     {
+        require(_front !is null);
         return *_front;
     }
+
 
     bool empty()
     {
@@ -81,6 +193,7 @@ private struct RTreeRange(RTree, alias shouldEnterBox, alias matchesPattern)
         typeof(this) result;
         result._front = _front;
         result.vs = vs.dup;
+        return result;
     }
 }
 
@@ -93,6 +206,10 @@ private struct Leaf(_ElementType, uint _childCount, BoxType)
     auto opSlice()
     {
         return elements[0 .. length];
+    }
+    ref opIndex(size_t arg)
+    {
+        return elements[arg];
     }
     ElementType[childCount] elements;
     alias children = elements;
@@ -181,7 +298,6 @@ private struct Reference(NodeType_, LeafType_)
     }
     this(ref NodeType ptr)
     {
-
         node(ptr);
     }
     this(ref LeafType ptr)
@@ -207,8 +323,14 @@ private struct Node(ElementType, uint _childCount, BoxType)
     alias childCount = _childCount;
     auto opSlice()
     {
-        import std.algorithm.searching : until;
-        return children[].until!(n => n.isNull);
+        import std.algorithm.searching : countUntil;
+        ptrdiff_t ccount = children[].countUntil!(n => n.isNull);
+        return children[0 .. ccount == -1 ? $ : ccount];
+    }
+    ref opIndex(size_t arg)
+    {
+        require(!children[arg].isNull);
+        return children[arg];
     }
     BoxType box;
     alias ReferenceType = Reference!(typeof(this), Leaf!(ElementType, childCount, BoxType));
@@ -232,7 +354,7 @@ private struct Node(ElementType, uint _childCount, BoxType)
 
 /**
 The root data structure of any R-Tree implemented by this module. The tree does not reference external data by itself,
-but manages the elements by value.
+but manages the elements by value while providing `ref` access.
 
 Params:
     _ElementType = the type of the elements to be held within the tree
@@ -252,7 +374,6 @@ BFun:
     Infinite values as are possible with floating point types
     are acceptable and treated correctly, NaN however is illegal.
     Any wrapping overflow behavior as the inbuilt integer types experience are not regarded and to be prevented.
-
 */
 struct RTree(_ElementType, alias BFun, uint _dimensionCount, uint _maxChildrenPerNode = 16,
              uint _minChildrenPerNode = 6, _ManagementType = float)
@@ -353,7 +474,7 @@ private size_t drawTree(RTree, W, W2)(ref RTree tree, ref W w, ref W2 w2)
     w.formattedWrite!`settings.outformat="pdf";`;
     w.formattedWrite!"\nunitsize(10cm);\n";
     w2.formattedWrite!`digraph tree { graph [fontname="osifont", layout="dot", overlap=false]%s`("\n");
-    w2.formattedWrite!`node [fontname="osifont", shape="circle", fixedsize=false]%s`("\n");
+    w2.formattedWrite!`node [fontname="osifont", shape="rectangle", fixedsize=false]%s`("\n");
     w2.formattedWrite!`edge [fontname="osifont"]%s`("\n");
     alias Ve = Tuple!(ReferenceType, "node", size_t, "skip");
     auto vs = Stack!Ve(8);
@@ -396,8 +517,8 @@ private size_t drawTree(RTree, W, W2)(ref RTree tree, ref W w, ref W2 w2)
                     require(vs.front.node.box.contains(b[0]),
                         format!"%s does not contain %s of %s | diff: %s %s"(vs.front.node.box, b[0], b[1],
                             b[0].min - vs.front.node.box.min, vs.front.node.box.max - b[0].max));
-                    w.formattedWrite!"draw(box((%s, %s), (%s, %s)), hsv(0, 1.0, %s)+linewidth(1mm));\n"
-                        (b[0].min[0], b[0].min[1], b[0].max[0], b[0].max[1], vs.length / 20.0);
+                    //w.formattedWrite!"draw(box((%s, %s), (%s, %s)), hsv(0, 1.0, %s)+linewidth(1mm));\n"
+                    //    (b[0].min[0], b[0].min[1], b[0].max[0], b[0].max[1], vs.length / 20.0);
                 }
             }
             vs.front.skip += 1;
@@ -417,8 +538,8 @@ private size_t drawTree(RTree, W, W2)(ref RTree tree, ref W w, ref W2 w2)
                 w2.formattedWrite!`"E%s" [color = green]%s`(&a, "\n");
                 w2.formattedWrite!`"L%s" -> "E%s"%s`(&(vs.front.node.leaf()), &a, "\n");
                 require(vs.front.node.box.contains(b));
-                w.formattedWrite!"draw(box((%s, %s), (%s, %s)), hsv(120, 1.0, 0.5)+linewidth(1mm));\n"
-                    (b.min[0], b.min[1], b.max[0], b.max[1]);
+                w.formattedWrite!"draw(box((%s, %s), (%s, %s)), hsv(%s, 1.0, 0.5)+linewidth(1mm));\n"
+                    (b.min[0], b.min[1], b.max[0], b.max[1], a.color == Color.green ? 120 : 200);
                 itemCount += 1;
             }
             vs.popFront;
@@ -554,6 +675,10 @@ private void insert(RTree, R)(ref RTree tree, ref R datum, size_t level = size_t
 
 /**
 Inserts an element into the specified tree. Duplicates are allowed.
+May invalidate pointers to elements.
+
+Asserts:
+    Well-formedness of bounding box
 
 Params:
     tree = the tree to operate on
@@ -574,6 +699,8 @@ private void insert(RTree, R, S)(ref RTree tree, auto ref R datum, size_t level,
     insert(tree, datum, level, orphanStack, null);
 }
 
+
+//TODO: make this ugly piece of shit function nice
 private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
                                     size_t level, S orphanStack, B preSubTree)
     if (is(R == RTree.ElementType)
@@ -696,6 +823,13 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
                     }
                     tree.pruneEmpty(subTree, orphanStack);
 
+                    /+import std.stdio;
+                    import std.range;
+                    import std.format;
+                    auto file = File(format!"trees/g%06s.dot"(cnt++), "w");
+                    auto w = file.lockingTextWriter;
+                    tree.drawTree(nullSink, w);
+                    +/
                     insert(tree, *newNodes[1], originalSubTreeLength, orphanStack);
                     return;
                 }
@@ -924,23 +1058,38 @@ private void pruneEmpty(RTree, NodeStackType)(
 {
     import std.algorithm.searching : countUntil;
     import std.range : walkLength;
+    alias ReferenceType = RTree.ReferenceType;
     require(nodeStack.front.type != tree.ReferenceType.Types.leaf);
     while (/+nodeStack.front.node[].walkLength < tree.minChildrenPerNode && +/nodeStack.length > 1)
     {
-        if (nodeStack.front.node[].walkLength < tree.minChildrenPerNode)
+        if (nodeStack.front.node[].walkLength == 1
+            && nodeStack.front.node.children[0].type == ReferenceType.Types.nonLeaf)
         {
-        RTree.ReferenceType sentencedNode = nodeStack.front;
-        foreach (child; nodeStack.front.node[])
-            orphanStack.pushFront(child);
-        nodeStack.front.node.eraseNode;
-        nodeStack.popFront;
-        auto killNIndex = nodeStack.front.node[].countUntil!(n => n == sentencedNode);
-        require(killNIndex != size_t.max);
-        removeEntryFromNode(nodeStack.front.node, killNIndex);
-        dispose(tree.nodeAllocator, &(sentencedNode.node()));
+            auto loneNode = &(nodeStack.front.node.children[0].node());
+            nodeStack.front.node.children[] = loneNode.children[];
+            dispose(tree.nodeAllocator, loneNode);
+        }
+        else if (nodeStack.front.node[].walkLength < tree.minChildrenPerNode)
+        {
+            RTree.ReferenceType sentencedNode = nodeStack.front;
+            foreach (child; nodeStack.front.node[])
+                orphanStack.pushFront(child);
+            nodeStack.front.node.eraseNode;
+            nodeStack.popFront;
+            auto killNIndex = nodeStack.front.node[].countUntil!(n => n == sentencedNode);
+            require(killNIndex != size_t.max);
+            removeEntryFromNode(nodeStack.front.node, killNIndex);
+            dispose(tree.nodeAllocator, &(sentencedNode.node()));
         }
         else
             nodeStack.popFront;
+    }
+    if (nodeStack.front.node[].walkLength == 1
+        && nodeStack.front.node.children[0].type == ReferenceType.Types.nonLeaf)
+    {
+        auto loneNode = &(nodeStack.front.node.children[0].node());
+        nodeStack.front.node.children[] = loneNode.children[];
+        dispose(tree.nodeAllocator, loneNode);
     }
 }
 
@@ -948,6 +1097,7 @@ private void pruneEmpty(RTree, NodeStackType)(
 Removes an matching element from the specified tree.
 Equivalence is defined by the `==` operator for `ElementType`. Only one element is removed at a time, if more than
 one element matches the given one, the first one found is removed, others stay in the tree.
+May invalidate pointers to elements.
 
 Asserts:
     Whether element is actually in tree.
@@ -1003,9 +1153,17 @@ void remove(RTree, ElementType)(ref RTree tree, auto ref ElementType element)
         }
 
         import std.range;
-        foreach (ref e; (*orphanElementsNode)[])
+        foreach (i, ref e; (*orphanElementsNode)[])
         {
+            /+import std.range;
+            import std.stdio;
+            import std.format;
+            auto file = File(format!"trees/g%06s-%04s.dot"(cnt++, i), "w");
+            auto w = file.lockingTextWriter;
+            tree.drawTree(nullSink, w);
+            file.close;+/
             tree.insert(e);
+
         }
         (*orphanElementsNode).eraseNode;
         dispose(tree.nodeAllocator, orphanElementsNode);
@@ -1029,6 +1187,7 @@ import std.range;
 import std.stdio;
 File gfile;
 typeof(File.lockingTextWriter()) gwriter;
+size_t cnt;
 
 private auto splitFull(RTree, N)(ref RTree tree, ref N node)
     if (is(N == RTree.NodeType)
@@ -1313,6 +1472,12 @@ private Tuple!(Stack!(RTree.ReferenceType), "nodeStack", size_t, "index")
 }
 import std.stdio;
 
+enum Color : ubyte
+{
+    green = 0,
+    blue = 1
+}
+
 unittest
 {
     import std.string;
@@ -1333,8 +1498,8 @@ unittest
             a.formattedRead!"%f, %f"(y, x);
             return vec2!float(cast(float)(x),cast(float)(y));}).array;
     stderr.writeln("loaded nodes");
-    alias ElementType = Tuple!(Vector!(float, 2), "data");
-    auto pnnn = nodes.enumerate.map!(n => ElementType(n.value)).cycle.take(1_000_000).array;
+    alias ElementType = Tuple!(Vector!(float, 2), "data", Color, "color");
+    auto pnnn = nodes.enumerate.map!(n => ElementType(n.value, Color.blue)).cycle.take(50_000).array;
     static auto calcElementBounds(ElementType n)
     {
         return BoxType(n.data.x,
@@ -1353,13 +1518,13 @@ unittest
     import core.thread;
     import std.datetime;
 
-    auto ttime = MonoTime.currTime + 500.msecs;
     File file = File("samples", "w");
     auto writer = file.lockingTextWriter;
 
     ulong[] samples = new ulong[pnnn.length];
 
     import core.memory;
+    auto ttime = MonoTime.currTime + 20.msecs;
     foreach (i, add; pnnn)
     {
         auto start = MonoTime.currTime.ticks;
@@ -1368,25 +1533,74 @@ unittest
         samples[i] += end - start;
         //writer.formattedWrite!"%s,%s,\n"(i, (end - start).ticksToNSecs);
         //assert((end - start).ticksToNSecs < 400000);
-        //tree.check;
-//        tree.drawTree()
-        if (MonoTime.currTime >= ttime)
-        {
-            ttime += 100.msecs;
-            writefln!"%s of %s (%s %%)"(i, pnnn.length, cast(float)(i)/(pnnn.length) * 100.0f);
-        }
-    }
-    foreach (i, rem; pnnn)
-    {
-        auto start = MonoTime.currTime.ticks;
-        tree.remove(rem);
-        auto end = MonoTime.currTime.ticks;
-        //writer.formattedWrite!"%s,,%s\n"(i, (end - start).ticksToNSecs);
 
         if (MonoTime.currTime >= ttime)
         {
-            ttime += 100.msecs;
-            writefln!"%s of %s (%s %%)"(i, pnnn.length, cast(float)(i)/(pnnn.length) * 100.0f);
+            ttime += 20.msecs;
+            writefln!"a%s of %s (%s %%)"(i, pnnn.length, cast(float)(i)/(pnnn.length) * 100.0f);
+        }
+    }
+
+    enum c = vec2!float(9.2, 54.0);
+
+    static struct Rad
+    {
+        float r = float.infinity;
+        size_t boxCnt;
+    }
+
+    static struct CloserElement
+    {
+        enum vec2!float coor = c;
+
+        static bool opCall(ref ElementType arg, ref Rad rad)
+        {
+            immutable vec2!float coordinate = typeof(tree).getBox(arg).min;
+            float newRad = coordinate.distanceTo(coor);
+            if (newRad <= rad.r)
+            {
+                writefln!":::%s"(newRad);
+                rad.r = newRad;
+                return true;
+            }
+            else
+                return false;
+        }
+    }
+
+    static struct TouchesCircle
+    {
+        static bool opCall(Box!(float, 2) box, ref Rad rad)
+        {
+            box.max += vec2!float(rad.r, rad.r);
+            box.min -= vec2!float(rad.r, rad.r);
+            rad.boxCnt += !box.contains(c);
+            return box.contains(c);
+        }
+    }
+
+    auto matches = RTreeRange!(typeof(tree), false, TouchesCircle, CloserElement)(tree);
+    //matches.each!((n, a){n.color = Color.green; writeln(cnt++);});
+    foreach (a, b; matches)
+    {
+        a.color = Color.green;
+        writefln!"%s %s %s"(a, b, cnt++);
+    }
+    auto ff = File("trees/map.asy", "w");
+    auto ww = ff.lockingTextWriter;
+    tree.drawTree(ww, nullSink);
+    ff.close;
+    ttime = MonoTime.currTime + 20.msecs;
+    foreach (i, rem; pnnn)
+    {
+        auto start = MonoTime.currTime.ticks;
+        //tree.remove(rem);
+        auto end = MonoTime.currTime.ticks;
+        //writer.formattedWrite!"%s,,%s\n"(i, (end - start).ticksToNSecs);
+        if (MonoTime.currTime >= ttime)
+        {
+            ttime += 20.msecs;
+            writefln!"r%s of %s (%s %%)"(i, pnnn.length, cast(float)(i)/(pnnn.length) * 100.0f);
         }
     }
     foreach (i, s; samples)
@@ -1397,3 +1611,6 @@ unittest
 
     tree.destroy;
 }
+
+
+

@@ -6,7 +6,7 @@
  Authors: John D. Cook.
  See_also: $(WEB www.johndcook.com/cpp_random_number_generation.html)
  */
-module gfm.math.simplerng;
+module cgfm.math.simplerng;
 
 public import std.random;
 import std.math;

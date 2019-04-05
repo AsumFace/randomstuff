@@ -1,5 +1,5 @@
 /// Custom sized 2-dimension Matrices
-module gfm.math.matrix;
+module cgfm.math.matrix;
 
 import std.math,
        std.typetuple,
@@ -8,9 +8,9 @@ import std.math,
        std.typecons,
        std.conv;
 
-import gfm.math.vector,
-       gfm.math.shapes,
-       gfm.math.quaternion;
+import cgfm.math.vector,
+       cgfm.math.shapes,
+       cgfm.math.quaternion;
 
 /// Generic non-resizeable matrix with R rows and C columns.
 /// Intended for 3D use (size 3x3 and 4x4).

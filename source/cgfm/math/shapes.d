@@ -9,13 +9,13 @@
   $(LI Frustum)
   )
  */
-module gfm.math.shapes;
+module cgfm.math.shapes;
 
 import std.math,
        std.traits;
 
-import gfm.math.vector,
-       gfm.math.box;
+import cgfm.math.vector,
+       cgfm.math.box;
 
 /// A Segment is 2 points.
 /// When considered like a vector, it represents the arrow from a to b.

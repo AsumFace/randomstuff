@@ -1,15 +1,15 @@
 /**
   This module implements a generic axis-aligned bounding box (AABB).
  */
-module gfm.math.box;
+module cgfm.math.box;
 
 import std.math,
        std.traits,
        std.conv,
        std.string;
 
-import gfm.math.vector,
-       gfm.math.funcs;
+import cgfm.math.vector,
+       cgfm.math.funcs;
 
 /// N-dimensional half-open interval [a, b[.
 struct Box(T, int N)
@@ -256,7 +256,7 @@ struct Box(T, int N)
         /// Returns: Expanded box.
         @nogc Box expand(bound_t point) pure const nothrow
         {
-            import vector = gfm.math.vector;
+            import vector = cgfm.math.vector;
             return Box(vector.minByElem(min, point), vector.maxByElem(max, point));
         }
 

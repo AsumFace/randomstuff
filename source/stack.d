@@ -34,7 +34,10 @@ struct Stack(T)
 
     this(size_t size)
     {
-        entryStore = makeArray!T(stackAllocator, size);
+        //if (!__ctfe)
+            entryStore = makeArray!T(stackAllocator, size);
+        //else
+        //    entryStore = new T[size];
         enforce(entryStore !is null, new AllocationFailure("Stack construction failed due to allocation failure"));
     }
     ref T opIndex(size_t i)

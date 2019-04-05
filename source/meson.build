@@ -1,4 +1,4 @@
-subdir('gfm/math')
+subdir('cgfm/math')
 
 inc = include_directories('.')
 
@@ -11,4 +11,4 @@ abb_sources = [
 executable('abb',
            abb_sources,
            include_directories: inc,
-           link_with : gfm_math)
+           link_with : cgfm_math)

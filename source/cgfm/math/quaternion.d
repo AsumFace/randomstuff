@@ -1,12 +1,12 @@
 ///
-module gfm.math.quaternion;
+module cgfm.math.quaternion;
 
 import std.math,
        std.string;
 
-import gfm.math.vector,
-       gfm.math.matrix,
-       funcs = gfm.math.funcs;
+import cgfm.math.vector,
+       cgfm.math.matrix,
+       funcs = cgfm.math.funcs;
 
 /// Quaternion implementation.
 /// Holds a rotation + angle in a proper but wild space.

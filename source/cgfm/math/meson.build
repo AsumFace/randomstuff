@@ -1,6 +1,6 @@
 inc = include_directories('../..')
 
-gfm_math_sources = [
+cgfm_math_sources = [
     'package.d',
     'box.d',
     'funcs.d',
@@ -10,8 +10,7 @@ gfm_math_sources = [
     'simplerng.d',
     'vector.d']
 
-gfm_math = library('gfm_math',
-           gfm_math_sources,
+cgfm_math = library('cgfm_math',
+           cgfm_math_sources,
            include_directories: inc)
 
-declare_dependency(link_with : gfm_math, include_directories : inc)

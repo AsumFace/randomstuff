@@ -1,5 +1,5 @@
 /// N-dimension vector mathematical object
-module gfm.math.vector;
+module cgfm.math.vector;
 
 import std.traits,
        std.math,
@@ -7,7 +7,7 @@ import std.traits,
        std.array,
        std.string;
 
-import gfm.math.funcs;
+import cgfm.math.funcs;
 
 /**
  * Generic 1D small vector.

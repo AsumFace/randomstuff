@@ -3,14 +3,14 @@
 
   If you need real statistics, consider using the $(WEB github.com/dsimcha/dstats,Dstats) library.
  */
-module gfm.math.funcs;
+module cgfm.math.funcs;
 
 import std.math,
        std.traits,
        std.range,
        std.math;
 
-import gfm.math.vector : Vector;
+import cgfm.math.vector : Vector;
 
 version( D_InlineAsm_X86 )
 {

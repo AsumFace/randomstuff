@@ -15,7 +15,7 @@ class AllocationFailure : Exception
 
 import required;
 import cgfm.math;
-import stack;
+import stack_container;
 import std.traits;
 import std.experimental.allocator.common;
 import std.experimental.allocator.building_blocks.allocator_list;
@@ -34,6 +34,11 @@ part of a `Tuple` and is meant to make basic data exchange between the predicate
 private struct RTreeRange(RTree, bool dynamic, A...)
 
 {
+    alias ReferenceType = RTree.ReferenceType;
+    alias ElementType = RTree.ElementType;
+    alias BoxType = RTree.BoxType;
+    alias SeT = Tuple!(ReferenceType, "nd", size_t, "skip");
+
     // *BLING* *BLING* useful error messages!
     static assert(A.length == 2, "wrong number of template arguments (need 4, got " ~ (A.length + 2).stringof ~ ")");
     static assert(isCallable!(A[0]), A[0].stringof ~ " is not a callable");
@@ -75,12 +80,23 @@ private struct RTreeRange(RTree, bool dynamic, A...)
             alias AuxDataType = Parameters!(A[1])[1];
 
         AuxDataType aux;
+
+        import typecons : Ref;
+        import std.typecons : Tuple;
+        Tuple!(Ref!ElementType, Ref!AuxDataType) front()
+        {
+            return typeof(return)(Ref!ElementType(*_front), Ref!AuxDataType(aux));
+        }
+    }
+    else
+    {
+        ref ElementType front()
+        {
+            return *_front;
+        }
     }
 
-    alias ReferenceType = RTree.ReferenceType;
-    alias ElementType = RTree.ElementType;
-    alias BoxType = RTree.BoxType;
-    alias SeT = Tuple!(ReferenceType, "nd", size_t, "skip");
+
     private Stack!SeT vs;
     private ElementType* _front;
 
@@ -176,13 +192,6 @@ private struct RTreeRange(RTree, bool dynamic, A...)
         _front = null;
     }
 
-    private ref ElementType efront()
-    {
-        require(_front !is null);
-        return *_front;
-    }
-
-
     bool empty()
     {
         return _front is null;
@@ -191,6 +200,8 @@ private struct RTreeRange(RTree, bool dynamic, A...)
     typeof(this) save()
     {
         typeof(this) result;
+        static if (hasMember!(typeof(this), "aux"))
+            result.aux = aux;
         result._front = _front;
         result.vs = vs.dup;
         return result;
@@ -1493,22 +1504,22 @@ unittest
     import std.typecons;
     Mt19937 gen;
     gen.seed(3);
-    alias BoxType = Box!(float, 2);
+    alias BoxType = Box!(long, 2);
     auto nodes = File("views/vertdata").byLine.map!((a){double x; double y;
             a.formattedRead!"%f, %f"(y, x);
-            return vec2!float(cast(float)(x),cast(float)(y));}).array;
+            return vec2!long(cast(long)(x*100.0),cast(long)(y*100.0));}).array;
     stderr.writeln("loaded nodes");
-    alias ElementType = Tuple!(Vector!(float, 2), "data", Color, "color");
-    auto pnnn = nodes.enumerate.map!(n => ElementType(n.value, Color.blue)).cycle.take(50_000).array;
+    alias ElementType = Tuple!(Vector!(long, 2), "data", Color, "color");
+    auto pnnn = nodes.enumerate.map!(n => ElementType(n.value, Color.blue)).cycle.take(100_000).array;
     static auto calcElementBounds(ElementType n)
     {
         return BoxType(n.data.x,
                        n.data.y,
-                       n.data.x.nextUp,// + 0.001,
-                       n.data.y.nextUp// + 0.001
+                       n.data.x + 1,//.nextUp,// + 0.001,
+                       n.data.y + 1//.nextUp// + 0.001
                        );
     }
-    RTree!(typeof(pnnn.front), calcElementBounds, 2, 8, 4, float) tree;
+    RTree!(typeof(pnnn.front), calcElementBounds, 2, 8, 4, long) tree;
     tree.initialize;    
 
     dirEntries("trees/", SpanMode.shallow, false).each!(std.file.remove);
@@ -1541,25 +1552,26 @@ unittest
         }
     }
 
-    enum c = vec2!float(9.2, 54.0);
+    enum c = vec2!long(920, 5400);
 
     static struct Rad
     {
-        float r = float.infinity;
-        size_t boxCnt;
+        long r = long.max;
+        size_t boxpCnt;
+        size_t boxnCnt;
     }
 
     static struct CloserElement
     {
-        enum vec2!float coor = c;
+        enum vec2!long coor = c;
 
         static bool opCall(ref ElementType arg, ref Rad rad)
         {
-            immutable vec2!float coordinate = typeof(tree).getBox(arg).min;
-            float newRad = coordinate.distanceTo(coor);
+            immutable vec2!long coordinate = typeof(tree).getBox(arg).min;
+            long newRad = (coordinate-coor)[].map!(n => n < 0 ? -n : n).fold!((a,b) => a + b);
             if (newRad <= rad.r)
             {
-                writefln!":::%s"(newRad);
+                //writefln!":::%s"(newRad);
                 rad.r = newRad;
                 return true;
             }
@@ -1570,26 +1582,67 @@ unittest
 
     static struct TouchesCircle
     {
-        static bool opCall(Box!(float, 2) box, ref Rad rad)
+        static bool opCall(Box!(long, 2) box, ref Rad rad)
         {
-            box.max += vec2!float(rad.r, rad.r);
-            box.min -= vec2!float(rad.r, rad.r);
-            rad.boxCnt += !box.contains(c);
-            return box.contains(c);
+            if (box.contains(c)) // slightly faster
+            {
+                rad.boxpCnt++;
+                return true;
+            }
+            auto newV = box.max.x + rad.r;
+            if (newV >= box.max.x)
+                box.max.x += rad.r;
+            else
+                box.max.x = long.max;
+            newV = box.max.y + rad.r;
+            if (newV >= box.max.y)
+                box.max.y += rad.r;
+            else
+                box.max.y = long.max;
+
+            newV = box.min.x - rad.r;
+            if (newV <= box.min.x)
+                box.min.x -= rad.r;
+            else
+                box.min.x = long.min;
+            newV = box.min.y - rad.r;
+            if (newV <= box.min.y)
+                box.min.y -= rad.r;
+            else
+                box.min.y = long.min;
+
+            writefln!"a:%s | c:%s | r:%s"(box, c, rad.r);
+            if (box.contains(c))
+            {
+                rad.boxpCnt++;
+                return true;
+            }
+            else
+            {
+                rad.boxnCnt++;
+                return false;
+            }
+            //return box.contains(c);
         }
     }
 
-    auto matches = RTreeRange!(typeof(tree), false, TouchesCircle, CloserElement)(tree);
-    //matches.each!((n, a){n.color = Color.green; writeln(cnt++);});
-    foreach (a, b; matches)
-    {
-        a.color = Color.green;
-        writefln!"%s %s %s"(a, b, cnt++);
-    }
+    writefln!"dr";
     auto ff = File("trees/map.asy", "w");
     auto ww = ff.lockingTextWriter;
     tree.drawTree(ww, nullSink);
     ff.close;
+    writefln!"mt";
+
+    auto matches = RTreeRange!(typeof(tree), false, TouchesCircle, CloserElement)(tree);
+    //matches.each!((n, a){n.color = Color.green; writeln(cnt++);});
+    for (; !matches.empty; matches.popFront)
+    {
+        matches.front[0].color = Color.green;
+        writefln!"%s p:%s n:%s cnt:%s, %s"(matches.front[0], matches.front[1].boxpCnt, matches.front[1].boxnCnt, cnt++, matches.front[1].r);
+        writeln(matches.aux);
+    }
+    writefln!"p: %s n:%s"(matches.aux.boxpCnt, matches.aux.boxnCnt);
+
     ttime = MonoTime.currTime + 20.msecs;
     foreach (i, rem; pnnn)
     {

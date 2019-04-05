@@ -11,6 +11,6 @@ cgfm_math_sources = [
     'vector.d']
 
 cgfm_math = library('cgfm_math',
-           cgfm_math_sources,
-           include_directories: inc)
+            cgfm_math_sources,
+            include_directories: inc)
 

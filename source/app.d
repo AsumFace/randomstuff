@@ -1,6 +1,6 @@
 struct Point
 {
-    import gfm.math;
+    import cgfm.math;
     size_t id;
     double mass = 1.0;
     Vector!(double, 2)[5] position;
@@ -23,7 +23,7 @@ void main()
     import rtree;
     import std.random;
     import std.math;
-    import gfm.math;
+    import cgfm.math;
     import std.stdio;
     import std.format;
     import core.thread;

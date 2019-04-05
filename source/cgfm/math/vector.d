@@ -21,66 +21,72 @@ struct Vector(T, int N)
     {
         static assert(N >= 1);
 
-        // fields definition
-        /+union
-        {+/
-            T[N] v;
-            /+struct
-            {+/
-                static if (N >= 1)
-                {
-                    //T x;
-                    T x() const nothrow @property
-                    {
-                        return v[0];
-                    }
-                    T x(const(T) value) nothrow @property
-                    {
-                        return v[0] = value;
-                    }
-                    alias x r;
-                }
-                static if (N >= 2)
-                {
-                    //T y;
-                    T y() const nothrow @property
-                    {
-                        return v[1];
-                    }
-                    T y(const(T) value) nothrow @property
-                    {
-                        return v[1] = value;
-                    }
-                    alias y g;
-                }
-                static if (N >= 3)
-                {
-                    //T z;
-                    T z() const nothrow @property
-                    {
-                        return v[2];
-                    }
-                    T z(const(T) value) nothrow @property
-                    {
-                        return v[2] = value;
-                    }
-                    alias z b;
-                }
-                static if (N >= 4)
-                {
-                    //T w;
-                    T w() const nothrow @property
-                    {
-                        return v[3];
-                    }
-                    T w(const(T) value) nothrow @property
-                    {
-                        return v[3] = value;
-                    }
-                    alias w a;
-                }
-            /+}
-        }+/
+        T[N] v;
+
+        static if (N >= 1)
+        {
+            T x() const nothrow @property
+            {
+                return v[0];
+            }
+            ref T x() nothrow @property
+            {
+                return v[0];
+            }
+            ref T x(const(T) value) nothrow @property
+            {
+                return v[0] = value;
+            }
+            alias x r;
+        }
+        static if (N >= 2)
+        {
+            T y() const nothrow @property
+            {
+                return v[1];
+            }
+            ref T y() nothrow @property
+            {
+                return v[1];
+            }
+            ref T y(const(T) value) nothrow @property
+            {
+                return v[1] = value;
+            }
+            alias y g;
+        }
+        static if (N >= 3)
+        {
+            T z() const nothrow @property
+            {
+                return v[2];
+            }
+            ref T z() nothrow @property
+            {
+                return v[2];
+            }
+            ref T z(const(T) value) nothrow @property
+            {
+                return v[2] = value;
+            }
+            alias z b;
+        }
+        static if (N >= 4)
+        {
+            T w() const nothrow @property
+            {
+                return v[3];
+            }
+            ref T w() nothrow @property
+            {
+                return v[3];
+            }
+            ref T w(const(T) value) nothrow @property
+            {
+                return v[3] = value;
+            }
+            alias w a;
+        }
 
         /// Construct a Vector with a `T[]` or the values as arguments
         @nogc this(Args...)(Args args) pure nothrow

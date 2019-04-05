@@ -1,3 +1,5 @@
 {
-    "name": "abb"
+    "name": "abb",
+    "description": "R-Tree data structure",
+    "license": "BSL-1.0"
 }

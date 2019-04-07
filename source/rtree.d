@@ -1,3 +1,11 @@
+/+--------------------Copyright Notice------------------------+\
+|      Copyright:                                              |
+|  - AsumFace (asumface@gmail.com) 2018 - 2019.                |
+|  Distributed under the Boost Software License, Version 1.0.  |
+|  See accompanying file LICENSE or copy at                    |
+|      https://www.boost.org/LICENSE_1_0.txt)                  |
+\+------------------------------------------------------------+/
+
 module rtree;
 
 version(LittleEndian)
@@ -297,7 +305,7 @@ private struct Reference(NodeType_, LeafType_)
             return leaf.box;
         }
     }
-    auto box(typeof(box) box) @property
+    auto box(typeof(node.box) box) @property
     {
         final switch (type)
         {
@@ -421,16 +429,39 @@ struct RTree(_ElementType, alias BFun, uint _dimensionCount, uint _maxChildrenPe
 
     void destroy()
     {
-        auto nodeStack = Stack!(NodeType*)(8);
+        auto nodeStack = Stack!(ReferenceType[])(8);
         scope(exit)
             nodeStack.destroy;
-        nodeStack.pushFront(rootPtr);
+        nodeStack.pushFront((*rootPtr)[]);
+        while (true)
+        {
+            if (nodeStack.front.empty)
+            {
+                nodeStack.popFront;
+                if (nodeStack.empty)
+                    break;
+                dispose(nodeAllocator, &(nodeStack.front[0].node()));
+                nodeStack.front.popFront;
+                continue;
+            }
+            if (nodeStack.front[0].type == ReferenceType.Types.leaf)
+            {
+                static if (__traits(compiles, selectedNode.leaf[0].destroy))
+                foreach (ref e; selectedNode.leaf[])
+                    e.destroy;
+                dispose(nodeAllocator, &(nodeStack.front[0].leaf()));
+                nodeStack.front.popFront;
+                continue;
+            }
+            else
+            {
+                nodeStack.pushFront(nodeStack.front[0].node[]);
+                continue;
+            }
+        }
+        dispose(nodeAllocator, rootPtr);
+        rootPtr = null;
     }
-
-/+TODO:    RTreeRange!(typeof(this), SearchModes.all, false) opSlice()
-    {
-        return typeof(return)(this);
-    }+/
 
     /**
     Convenience function to calculate the bounding box of any given element
@@ -1489,7 +1520,7 @@ enum Color : ubyte
     blue = 1
 }
 
-unittest
+void finn()
 {
     import std.string;
     import std.format;
@@ -1504,13 +1535,13 @@ unittest
     import std.typecons;
     Mt19937 gen;
     gen.seed(3);
-    alias BoxType = Box!(long, 2);
+    alias BoxType = Box!(int, 2);
     auto nodes = File("views/vertdata").byLine.map!((a){double x; double y;
             a.formattedRead!"%f, %f"(y, x);
-            return vec2!long(cast(long)(x*100.0),cast(long)(y*100.0));}).array;
+            return vec2!int(cast(int)(x*10000.0),cast(int)(y*10000.0));}).array;
     stderr.writeln("loaded nodes");
-    alias ElementType = Tuple!(Vector!(long, 2), "data", Color, "color");
-    auto pnnn = nodes.enumerate.map!(n => ElementType(n.value, Color.blue)).cycle.take(100_000).array;
+    alias ElementType = Tuple!(Vector!(int, 2), "data", Color, "color");
+    auto pnnn = nodes.enumerate.map!(n => ElementType(n.value, Color.blue)).cycle.take(1_000_000).array;
     static auto calcElementBounds(ElementType n)
     {
         return BoxType(n.data.x,
@@ -1519,7 +1550,7 @@ unittest
                        n.data.y + 1//.nextUp// + 0.001
                        );
     }
-    RTree!(typeof(pnnn.front), calcElementBounds, 2, 8, 4, long) tree;
+    RTree!(typeof(pnnn.front), calcElementBounds, 2, 8, 4, int) tree;
     tree.initialize;    
 
     dirEntries("trees/", SpanMode.shallow, false).each!(std.file.remove);
@@ -1552,23 +1583,23 @@ unittest
         }
     }
 
-    enum c = vec2!long(920, 5400);
+    enum c = vec2!int(92000, 540000);
 
     static struct Rad
     {
-        long r = long.max;
+        int r = int.max;
         size_t boxpCnt;
         size_t boxnCnt;
     }
 
     static struct CloserElement
     {
-        enum vec2!long coor = c;
+        enum vec2!int coor = c;
 
         static bool opCall(ref ElementType arg, ref Rad rad)
         {
-            immutable vec2!long coordinate = typeof(tree).getBox(arg).min;
-            long newRad = (coordinate-coor)[].map!(n => n < 0 ? -n : n).fold!((a,b) => a + b);
+            immutable vec2!int coordinate = typeof(tree).getBox(arg).min;
+            int newRad = (coordinate-coor)[].map!(n => n < 0 ? -n : n).fold!((a,b) => a + b);
             if (newRad <= rad.r)
             {
                 //writefln!":::%s"(newRad);
@@ -1582,7 +1613,7 @@ unittest
 
     static struct TouchesCircle
     {
-        static bool opCall(Box!(long, 2) box, ref Rad rad)
+        static bool opCall(Box!(int, 2) box, ref Rad rad)
         {
             if (box.contains(c)) // slightly faster
             {
@@ -1593,25 +1624,25 @@ unittest
             if (newV >= box.max.x)
                 box.max.x += rad.r;
             else
-                box.max.x = long.max;
+                box.max.x = int.max;
             newV = box.max.y + rad.r;
             if (newV >= box.max.y)
                 box.max.y += rad.r;
             else
-                box.max.y = long.max;
+                box.max.y = int.max;
 
             newV = box.min.x - rad.r;
             if (newV <= box.min.x)
                 box.min.x -= rad.r;
             else
-                box.min.x = long.min;
+                box.min.x = int.min;
             newV = box.min.y - rad.r;
             if (newV <= box.min.y)
                 box.min.y -= rad.r;
             else
-                box.min.y = long.min;
+                box.min.y = int.min;
 
-            writefln!"a:%s | c:%s | r:%s"(box, c, rad.r);
+            //writefln!"a:%s | c:%s | r:%s"(box, c, rad.r);
             if (box.contains(c))
             {
                 rad.boxpCnt++;
@@ -1662,7 +1693,11 @@ unittest
     }
     file.close;
 
+
+    auto destrStart = MonoTime.currTime;
     tree.destroy;
+    auto destrEnd = MonoTime.currTime;
+    writefln!"destr time: %s"(destrEnd - destrStart);
 }
 
 

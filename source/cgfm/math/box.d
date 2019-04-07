@@ -3,6 +3,7 @@
  */
 module cgfm.math.box;
 
+import required;
 import std.math,
        std.traits,
        std.conv,
@@ -116,7 +117,7 @@ struct Box(T, int N)
         /// Returns: true if it contains point.
         @nogc bool contains(bound_t point) pure const nothrow
         {
-            assert(isSorted());
+            require(isSorted());
             for(int i = 0; i < N; ++i)
                 if ( !(point[i] >= min[i] && point[i] < max[i]) )
                     return false;
@@ -127,8 +128,8 @@ struct Box(T, int N)
         /// Returns: true if it contains box other.
         @nogc bool contains(Box other) pure const nothrow
         {
-            assert(isSorted());
-            assert(other.isSorted());
+            require(isSorted());
+            require(other.isSorted());
 
             mixin(generateLoopCode!("if ( (other.min[@] < min[@]) || (other.max[@] > max[@]) ) return false;", N)());
             return true;
@@ -138,7 +139,7 @@ struct Box(T, int N)
         /// See_also: Numerical Recipes Third Edition (2007)
         @nogc real squaredDistance(bound_t point) pure const nothrow
         {
-            assert(isSorted());
+            require(isSorted());
             real distanceSquared = 0;
             for (int i = 0; i < N; ++i)
             {
@@ -162,8 +163,8 @@ struct Box(T, int N)
         /// See_also: Numerical Recipes Third Edition (2007)
         @nogc real squaredDistance(Box o) pure const nothrow
         {
-            assert(isSorted());
-            assert(o.isSorted());
+            require(isSorted());
+            require(o.isSorted());
             real distanceSquared = 0;
             for (int i = 0; i < N; ++i)
             {
@@ -188,8 +189,8 @@ struct Box(T, int N)
         /// Returns: Intersection of two boxes.
         @nogc Box intersection(Box o) pure const nothrow
         {
-            assert(isSorted());
-            assert(o.isSorted());
+            require(isSorted());
+            require(o.isSorted());
 
             // Return an empty box if one of the boxes is empty
             if (empty())
@@ -265,8 +266,8 @@ struct Box(T, int N)
         /// Returns: Expanded box.
         @nogc Box expand(Box other) pure const nothrow
         {
-            assert(isSorted());
-            assert(other.isSorted());
+            require(isSorted());
+            require(other.isSorted());
 
             // handle empty boxes
             if (empty())

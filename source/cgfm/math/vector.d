@@ -1,6 +1,7 @@
 /// N-dimension vector mathematical object
 module cgfm.math.vector;
 
+import required;
 import std.traits,
        std.math,
        std.conv,
@@ -126,7 +127,7 @@ struct Vector(T, int N)
                     else
                         static assert(false, "Unrecognized argument in Vector constructor");
                 }
-                assert(index == N, "Bad arguments in Vector constructor");
+                require(index == N, "Bad arguments in Vector constructor");
             }
         }
 
@@ -148,7 +149,7 @@ struct Vector(T, int N)
         /// Size is checked in debug-mode.
         @nogc ref Vector opAssign(U)(U arr) pure nothrow if (isDynamicArray!(U) && isAssignable!(T, typeof(arr[0])))
         {
-            assert(arr.length == N);
+            require(arr.length == N);
             mixin(generateLoopCode!("v[@] = arr[@];", N)());
             return this;
         }
@@ -182,7 +183,8 @@ struct Vector(T, int N)
             try
                 return format("%s", v);
             catch (Exception e)
-                assert(false); // should not happen since format is right BUT IT DOES FUCKING HAPPEN AAAAAAAAH
+                require(false); // should not happen since format is right BUT IT DOES FUCKING HAPPEN AAAAAAAAH
+            assert(0);
         }
 
         void toString(W)(ref W w) const

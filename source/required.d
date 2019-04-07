@@ -3,10 +3,9 @@ module required;
 version(LDC)
 {
     import ldc.intrinsics;
-    pragma(LDC_inline_ir)
-        R inlineIR(string s, R, P...)(P);
+    private pragma(LDC_inline_ir) R inlineIR(string s, R, P...)(P) @nogc pure nothrow;
 
-    void require(bool cond, const(char)[] a...)
+    void require(bool cond, const(char)[] a...) @nogc pure nothrow
     {
         if (!cond)
         {
@@ -20,7 +19,7 @@ version(LDC)
 else version(GNU)
 {
     import gcc.builtins;
-    void require(bool cond, const(char)[] a...)
+    void require(bool cond, const(char)[] a...) @nogc pure nothrow
     {
         if (!cond)
         {
@@ -33,7 +32,7 @@ else version(GNU)
 }
 else
 {
-    void require(bool cond, const(char)[] a...)
+    void require(bool cond, const(char)[] a...) @nogc pure nothrow
     {
         if (!cond)
             assert(0, a);

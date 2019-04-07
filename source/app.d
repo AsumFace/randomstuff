@@ -30,6 +30,7 @@ void main()
     import std.datetime;
     Mt19937 gen;
     gen.seed(0);
+    finn;
 
 /+
     Point[] points = new Point[1_000];

@@ -276,7 +276,6 @@ struct Vector(T, int N)
             return v[i] = x;
         }
 
-
         /// Implements swizzling.
         ///
         /// Example:
@@ -343,6 +342,17 @@ struct Vector(T, int N)
 
         /// vec[a..b]
         @nogc T[] opSlice(int a, int b) pure nothrow
+        {
+            return v[a..b];
+        }
+
+        @nogc const(T)[] opSlice() const pure nothrow
+        {
+            return v[];
+        }
+
+        /// vec[a..b]
+        @nogc const(T)[] opSlice(int a, int b) const pure nothrow
         {
             return v[a..b];
         }

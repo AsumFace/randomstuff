@@ -2,8 +2,7 @@ module required;
 
 version(LDC)
 {
-    import ldc.intrinsics;
-    private pragma(LDC_inline_ir) R inlineIR(string s, R, P...)(P) @nogc pure nothrow;
+    import ldc.llvmasm;
 
     void require(bool cond, const(char)[] a...) @nogc pure nothrow
     {
@@ -12,7 +11,7 @@ version(LDC)
             version(assert)
                 assert(0, a);
             else
-                auto _ = inlineIR!("unreachable", int)(0);
+                int _ = __ir_pure!("unreachable", int)(0);
         }
     }
 }

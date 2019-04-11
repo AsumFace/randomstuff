@@ -7,11 +7,12 @@ abb_sources = [
     'rtree.d',
     'stack_container.d',
     'required.d',
-    'typecons.d']
+    'typecons.d',
+    'sqbox.d']
 
 
 executable('abb',
            abb_sources,
            include_directories: inc,
-           link_with : [cgfm_math],
-           objects : '/usr/lib64/clang/7.0.1/lib/linux/libclang_rt.profile-x86_64.a')
+           link_with : cgfm_math,
+           objects: '/usr/lib64/clang/8.0.0/lib/linux/libclang_rt.profile-x86_64.a')

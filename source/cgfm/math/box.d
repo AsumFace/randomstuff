@@ -26,7 +26,7 @@ struct Box(T, int N)
 
         /// Construct a box which extends between 2 points.
         /// Boundaries: min is inside the box, max is just outside.
-        @nogc this(bound_t min_, bound_t max_) pure nothrow
+        this(bound_t min_, bound_t max_)
         {
             min = min_;
             max = max_;
@@ -34,7 +34,7 @@ struct Box(T, int N)
 
         static if (N == 1)
         {
-            @nogc this(T min_, T max_) pure nothrow
+            this(T min_, T max_)
             {
                 min.x = min_;
                 max.x = max_;
@@ -43,7 +43,7 @@ struct Box(T, int N)
 
         static if (N == 2)
         {
-            @nogc this(T min_x, T min_y, T max_x, T max_y) pure nothrow
+            this(T min_x, T min_y, T max_x, T max_y)
             {
                 min = bound_t(min_x, min_y);
                 max = bound_t(max_x, max_y);
@@ -52,7 +52,7 @@ struct Box(T, int N)
 
         static if (N == 3)
         {
-            @nogc this(T min_x, T min_y, T min_z, T max_x, T max_y, T max_z) pure nothrow
+            this(T min_x, T min_y, T min_z, T max_x, T max_y, T max_z)
             {
                 min = bound_t(min_x, min_y, min_z);
                 max = bound_t(max_x, max_y, max_z);
@@ -63,40 +63,40 @@ struct Box(T, int N)
         @property
         {
             /// Returns: Dimensions of the box.
-            @nogc bound_t size() pure const nothrow
+            bound_t size() const
             {
                 return max - min;
             }
 
             /// Returns: Center of the box.
-            @nogc bound_t center() pure const nothrow
+            bound_t center() const
             {
                 return (min + max) / 2;
             }
 
             /// Returns: Width of the box, always applicable.
             static if (N >= 1)
-            @nogc T width() pure const nothrow @property
+            T width() const @property
             {
                 return max.x - min.x;
             }
 
             /// Returns: Height of the box, if applicable.
             static if (N >= 2)
-            @nogc T height() pure const nothrow @property
+            T height() const @property
             {
                 return max.y - min.y;
             }
 
             /// Returns: Depth of the box, if applicable.
             static if (N >= 3)
-            @nogc T depth() pure const nothrow @property
+            T depth() const @property
             {
                 return max.z - min.z;
             }
 
             /// Returns: Signed volume of the box.
-            @nogc T volume() pure const nothrow
+            T volume() const
             {
                 T res = 1;
                 bound_t size = size();
@@ -106,7 +106,7 @@ struct Box(T, int N)
             }
 
             /// Returns: true if empty.
-            @nogc bool empty() pure const nothrow
+            bool empty() const
             {
                 bound_t size = size();
                 mixin(generateLoopCode!("if (min[@] == max[@]) return true;", N)());
@@ -115,7 +115,7 @@ struct Box(T, int N)
         }
 
         /// Returns: true if it contains point.
-        @nogc bool contains(bound_t point) pure const nothrow
+        bool contains(bound_t point) const
         {
             require(isSorted());
             for(int i = 0; i < N; ++i)
@@ -126,7 +126,7 @@ struct Box(T, int N)
         }
 
         /// Returns: true if it contains box other.
-        @nogc bool contains(Box other) pure const nothrow
+        bool contains(Box other) const
         {
             require(isSorted());
             require(other.isSorted());
@@ -137,7 +137,7 @@ struct Box(T, int N)
 
         /// Euclidean squared distance from a point.
         /// See_also: Numerical Recipes Third Edition (2007)
-        @nogc real squaredDistance(bound_t point) pure const nothrow
+        real squaredDistance(bound_t point) const
         {
             require(isSorted());
             real distanceSquared = 0;
@@ -154,14 +154,14 @@ struct Box(T, int N)
 
         /// Euclidean distance from a point.
         /// See_also: squaredDistance.
-        @nogc real distance(bound_t point) pure const nothrow
+        real distance(bound_t point) const
         {
             return sqrt(squaredDistance(point));
         }
 
         /// Euclidean squared distance from another box.
         /// See_also: Numerical Recipes Third Edition (2007)
-        @nogc real squaredDistance(Box o) pure const nothrow
+        real squaredDistance(Box o) const
         {
             require(isSorted());
             require(o.isSorted());
@@ -179,7 +179,7 @@ struct Box(T, int N)
 
         /// Euclidean distance from another box.
         /// See_also: squaredDistance.
-        @nogc real distance(Box o) pure const nothrow
+        real distance(Box o) const
         {
             return sqrt(squaredDistance(o));
         }
@@ -187,7 +187,7 @@ struct Box(T, int N)
         /// Assumes sorted boxes.
         /// This function deals with empty boxes correctly.
         /// Returns: Intersection of two boxes.
-        @nogc Box intersection(Box o) pure const nothrow
+        Box intersection(Box o) const
         {
             require(isSorted());
             require(o.isSorted());
@@ -213,14 +213,14 @@ struct Box(T, int N)
         /// Assumes sorted boxes.
         /// This function deals with empty boxes correctly.
         /// Returns: Intersection of two boxes.
-        @nogc bool intersects(Box other) pure const nothrow
+        bool intersects(Box other) const
         {
             Box inter = this.intersection(other);
             return inter.isSorted() && !inter.empty();
         }
 
         /// Extends the area of this Box.
-        @nogc Box grow(bound_t space) pure const nothrow
+        Box grow(bound_t space) const
         {
             Box res = this;
             res.min -= space;
@@ -229,42 +229,61 @@ struct Box(T, int N)
         }
 
         /// Shrink the area of this Box. The box might became unsorted.
-        @nogc Box shrink(bound_t space) pure const nothrow
+        Box shrink(bound_t space) const
         {
             return grow(-space);
         }
 
         /// Extends the area of this Box.
-        @nogc Box grow(T space) pure const nothrow
+        Box grow(T space) const
         {
             return grow(bound_t(space));
         }
 
         /// Translate this Box.
-        @nogc Box translate(bound_t offset) pure const nothrow
+        Box translate(bound_t offset) const
         {
             return Box(min + offset, max + offset);
         }
 
         /// Shrinks the area of this Box.
         /// Returns: Shrinked box.
-        @nogc Box shrink(T space) pure const nothrow
+        Box shrink(T space) const
         {
             return shrink(bound_t(space));
         }
 
         /// Expands the box to include point.
         /// Returns: Expanded box.
-        @nogc Box expand(bound_t point) pure const nothrow
+        Box expand(bound_t point) const
         {
-            import vector = cgfm.math.vector;
-            return Box(vector.minByElem(min, point), vector.maxByElem(max, point));
+            import cgfm.math.vector;
+            import std.range : lockstep;
+            Box result;
+            result.min = minByElem(min, point);
+            foreach (ref r, t, p; lockstep(result.max[], max[], point[]))
+            {
+                if (p >= t)
+                {
+                    import std.traits;
+                    static if (isFloatingPoint!T)
+                    {
+                        import std.math : nextUp;
+                        r = p.nextUp;
+                    }
+                    else
+                        r = p + 1;
+                }
+                else
+                    r = t;
+            }
+            return result;
         }
 
         /// Expands the box to include another box.
         /// This function deals with empty boxes correctly.
         /// Returns: Expanded box.
-        @nogc Box expand(Box other) pure const nothrow
+        Box expand(Box other) const
         {
             require(isSorted());
             require(other.isSorted());
@@ -287,7 +306,7 @@ struct Box(T, int N)
         }
 
         /// Returns: true if each dimension of the box is >= 0.
-        @nogc bool isSorted() pure const nothrow
+        bool isSorted() const
         {
             for(int i = 0; i < N; ++i)
             {
@@ -298,7 +317,7 @@ struct Box(T, int N)
         }
 
         /// Assign with another box.
-        @nogc ref Box opAssign(U)(U x) nothrow if (isBox!U)
+        ref Box opAssign(U)(U x) if (isBox!U)
         {
             static if(is(U.element_t : T))
             {
@@ -320,13 +339,13 @@ struct Box(T, int N)
         }
 
         /// Returns: true if comparing equal boxes.
-        @nogc bool opEquals(U)(U other) pure const nothrow if (is(U : Box))
+        bool opEquals(U)(U other) const if (is(U : Box))
         {
             return (min == other.min) && (max == other.max);
         }
 
         /// Cast to other box types.
-        @nogc U opCast(U)() pure const nothrow if (isBox!U)
+        U opCast(U)() const if (isBox!U)
         {
             U b = void;
             for(int i = 0; i < N; ++i)
@@ -340,7 +359,7 @@ struct Box(T, int N)
         static if (N == 2)
         {
             /// Helper function to create rectangle with a given point, width and height.
-            static @nogc Box rectangle(T x, T y, T width, T height) pure nothrow
+            static Box rectangle(T x, T y, T width, T height)
             {
                 return Box(x, y, x + width, y + height);
             }
@@ -436,7 +455,7 @@ unittest
 
 private
 {
-    static string generateLoopCode(string formatString, int N)() pure nothrow
+    static string generateLoopCode(string formatString, int N)()
     {
         string result;
         for (int i = 0; i < N; ++i)
@@ -449,7 +468,7 @@ private
     }
 
     // Speed-up CTFE conversions
-    static string ctIntToString(int n) pure nothrow
+    static string ctIntToString(int n)
     {
         static immutable string[16] table = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
         if (n < 10)

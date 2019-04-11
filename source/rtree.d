@@ -1,6 +1,6 @@
 /+--------------------Copyright Notice------------------------+\
 |      Copyright:                                              |
-|  - AsumFace (asumface@gmail.com) 2018 - 2019.                |
+|  - AsumFace (asumface@gmail.com) 2018 - 2019                 |
 |  Distributed under the Boost Software License, Version 1.0.  |
 |  See accompanying file LICENSE or copy at                    |
 |      https://www.boost.org/LICENSE_1_0.txt)                  |
@@ -30,6 +30,7 @@ import std.experimental.allocator.building_blocks.allocator_list;
 import std.experimental.allocator.building_blocks.bitmapped_block;
 import std.experimental.allocator.mallocator;
 import std.experimental.allocator;
+import sqbox;
 
 /**
 A range to search for matching elements within an `RTree`. `ref` access is provided in order to be able to change
@@ -394,21 +395,34 @@ BFun:
     are acceptable and treated correctly, NaN however is illegal.
     Any wrapping overflow behavior as the inbuilt integer types experience are not regarded and to be prevented.
 */
-struct RTree(_ElementType, alias BFun, uint _dimensionCount, uint _maxChildrenPerNode = 16,
-             uint _minChildrenPerNode = 6, _ManagementType = float)
+struct RTree(_ElementType, alias BFun, uint _maxChildrenPerNode = 16, uint _minChildrenPerNode = 6)
 {
+    import std.traits;
+    static assert(isCallable!BFun, "BFun is not a callable!");
+    static if (isInstanceOf!(Box, ReturnType!BFun))
+    {
+        enum pointsOnly = false;
+        alias BoxType = ReturnType!BFun;
+        alias PointType = ReturnType!BFun.bound_t;
+    }
+    else static if (isInstanceOf!(Vector, ReturnType!BFun))
+    {
+        enum pointsOnly = true;
+        alias PointType = ReturnType!BFun;
+        alias BoxType = Box!(TemplateArgsOf!PointType);
+    }
+    else
+        static assert(0, "BFun returns neither a Box nor a Vector!");
+    static assert(arity!BFun == 1, "BFun must take exactly one argument!");
+    static assert(is(Parameters!BFun[0] == ElementType), "BFun must take one " ~ _ElementType.stringof ~ "!");
     alias ElementType = _ElementType;
-    alias BoxType = Box!(ManagementType, dimensionCount);
-    alias dimensionCount = _dimensionCount;
-    alias ManagementType = _ManagementType;
+    enum dimensionCount = TemplateArgsOf!(ReturnType!BFun)[1];
+    alias ManagementType = TemplateArgsOf!(ReturnType!BFun)[0];
     alias maxChildrenPerNode = _maxChildrenPerNode;
     alias minChildrenPerNode= _minChildrenPerNode;
     static assert(minChildrenPerNode <= (maxChildrenPerNode / 2),
-                   "minChildrenPerNode must not be larger than half of maxChildrenPerNode");
-    import std.traits;
-    static assert(isCallable!BFun);
-    static assert(is(ReturnType!BFun == BoxType));
-    static assert(is(Parameters!BFun[0] == ElementType));
+                   "minChildrenPerNode must not be larger than half of maxChildrenPerNode!");
+
     alias calcElementBounds = BFun;
     alias LeafType = Leaf!(ElementType, maxChildrenPerNode, BoxType);
     alias NodeType = Node!(ElementType, maxChildrenPerNode, BoxType);
@@ -466,7 +480,7 @@ struct RTree(_ElementType, alias BFun, uint _dimensionCount, uint _maxChildrenPe
     /**
     Convenience function to calculate the bounding box of any given element
     */
-    static BoxType getBox(T)(ref T entry)
+    static BoxType getBounds(T)(ref T entry)
         if (is(T == NodeType)
             || is(T == LeafType)
             || is(T == ReferenceType))
@@ -476,28 +490,32 @@ struct RTree(_ElementType, alias BFun, uint _dimensionCount, uint _maxChildrenPe
 
     static if (ParameterStorageClassTuple!calcElementBounds[0] == ParameterStorageClass.ref_)
     {
-        static BoxType getBox(T)(ref T entry)
+        static auto getBounds(T)(ref T entry)
             if (is(T == ElementType))
         {
-            mixin(_getBox_body);
+            mixin(_getBounds_body);
         }
     }
     else
     {
-        static BoxType getBox(T)(T entry)
+        static auto getBounds(T)(T entry)
             if (is(T == ElementType))
         {
-            mixin(_getBox_body);
+            mixin(_getBounds_body);
         }
     }
-    enum string _getBox_body =
+    enum string _getBounds_body =
     q{
-        import std.algorithm;
-        import std.math;
-        BoxType result = calcElementBounds(entry);
-        static if (isFloatingPoint!(typeof(result.min[0])))
+        auto result = calcElementBounds(entry);
+        static if (isFloatingPoint!ManagementType)
         {
-            require(result.min[].all!(n => !n.isNaN) && result.max[].all!(n => !n.isNaN));
+            import std.algorithm.searching : all;
+            import std.math : isNaN;
+            import std.algorithm.iteration : joiner;
+            static if (pointsOnly)
+                require(result[].all!(n => !n.isNaN));
+            else
+                require(joiner(result.min[], result.max[]).all!(n => !n.isNaN));
         }
         return result;
     };
@@ -514,7 +532,7 @@ private size_t drawTree(RTree, W, W2)(ref RTree tree, ref W w, ref W2 w2)
     alias LeafType = RTree.LeafType;
     alias ReferenceType = RTree.ReferenceType;
     w.formattedWrite!`settings.outformat="pdf";`;
-    w.formattedWrite!"\nunitsize(10cm);\n";
+    w.formattedWrite!"\nunitsize(0.1mm);\n";
     w2.formattedWrite!`digraph tree { graph [fontname="osifont", layout="dot", overlap=false]%s`("\n");
     w2.formattedWrite!`node [fontname="osifont", shape="rectangle", fixedsize=false]%s`("\n");
     w2.formattedWrite!`edge [fontname="osifont"]%s`("\n");
@@ -532,7 +550,7 @@ private size_t drawTree(RTree, W, W2)(ref RTree tree, ref W w, ref W2 w2)
         w2.formattedWrite!`"N%s"[color=violet]%s`(tree.rootPtr, "\n");
     }
     //w.formattedWrite!"draw(box((%s, %s), (%s, %s)), hsv(0.0, 1.0, %s)+linewidth(1mm));\n"(
-    //    entryBox.min.x, entryBox.min.y, entryBox.max.x, entryBox.max.y);
+    //     entryBox.min.x, entryBox.min.y, entryBox.max.x, entryBox.max.y);
     while (!vs.empty)
     {
         if (vs.front.node.type == ReferenceType.Types.nonLeaf)
@@ -554,13 +572,24 @@ private size_t drawTree(RTree, W, W2)(ref RTree tree, ref W w, ref W2 w2)
                     }
                     w2.formattedWrite!`"N%s" -> "%s"%s`(&(vs.front.node.node()), nstring, "\n");
                 }
-                foreach (b; vs.front.node.node[].map!((ref n) => tuple(n.box, n.type)))
+                foreach (ab; vs.front.node.node[].map!((ref n) => tuple(n.box, n.type)))
                 {
+                    static if (!is(typeof(ab[0]) == RTree.BoxType))
+                        auto b = tuple(BoxType(ab[0], ab[0]).makeBoxInclusive, ab[1]);
+                    else
+                        alias b = ab;
+                    if (!vs.front.node.box.contains(b[0]))
+                    {
+                        w.formattedWrite!"draw(box((%s, %s), (%s, %s)), hsv(0, 1.0, %s)+linewidth(0.5mm)+linetype(\"1 1\"));\n"
+                            (b[0].min[0], b[0].min[1], b[0].max[0], b[0].max[1], 1.0);
+                        w.formattedWrite!"draw(box((%s, %s), (%s, %s)), hsv(0, 1.0, %s)+linewidth(0.5mm)+linetype(\"1 2\"));\n"
+                            (vs.front.node.box.min[0], vs.front.node.box.min[1], vs.front.node.box.max[0], vs.front.node.box.max[1], 1.0);
+                    }
                     require(vs.front.node.box.contains(b[0]),
                         format!"%s does not contain %s of %s | diff: %s %s"(vs.front.node.box, b[0], b[1],
                             b[0].min - vs.front.node.box.min, vs.front.node.box.max - b[0].max));
-                    //w.formattedWrite!"draw(box((%s, %s), (%s, %s)), hsv(0, 1.0, %s)+linewidth(1mm));\n"
-                    //    (b[0].min[0], b[0].min[1], b[0].max[0], b[0].max[1], vs.length / 20.0);
+                    w.formattedWrite!"draw(box((%s, %s), (%s, %s)), hsv(0, 1.0, %s)+linewidth(1mm));\n"
+                        (b[0].min[0], b[0].min[1], b[0].max[0], b[0].max[1], vs.length / 20.0);
                 }
             }
             vs.front.skip += 1;
@@ -574,9 +603,13 @@ private size_t drawTree(RTree, W, W2)(ref RTree tree, ref W w, ref W2 w2)
         else if (vs.front.node.type == ReferenceType.Types.leaf)
         {
             require(vs.front.skip == size_t.max);
-            foreach (ref a, b; lockstep(vs.front.node.leaf[],
-                                    vs.front.node.leaf[].map!((ref n) => RTree.getBox(n))))
+            foreach (ref a, ab; lockstep(vs.front.node.leaf[],
+                                    vs.front.node.leaf[].map!((ref n) => RTree.getBounds(n))))
             {
+                static if (is(typeof(ab) == RTree.BoxType))
+                    auto b = ab;
+                else
+                    auto b = RTree.BoxType(ab, ab).makeBoxInclusive;
                 w2.formattedWrite!`"E%s" [color = green]%s`(&a, "\n");
                 w2.formattedWrite!`"L%s" -> "E%s"%s`(&(vs.front.node.leaf()), &a, "\n");
                 require(vs.front.node.box.contains(b));
@@ -633,7 +666,7 @@ private void check(RTree)(ref RTree tree)
         {
             require(vs.front.skip == size_t.max);
             foreach (ref a, b; lockstep(vs.front.node.leaf[],
-                                    vs.front.node.leaf[].map!((ref n) => RTree.getBox(n))))
+                                    vs.front.node.leaf[].map!((ref n) => RTree.getBounds(n))))
             {
                 require(vs.front.node.box.contains(b));
             }
@@ -767,12 +800,17 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
             //writef!"inserting Element, ";
         //else
             //writef!"inserting %s %s, "(R.stringof, &datum);
-        alias ReferenceType = tree.ReferenceType;
-        alias NodeType = tree.NodeType;
-        alias LeafType = tree.LeafType;
-        alias BoxType = tree.BoxType;
-        alias ElementType = tree.ElementType;
-        auto datumBox = RTree.getBox(datum);
+        alias ReferenceType = RTree.ReferenceType;
+        alias NodeType = RTree.NodeType;
+        alias LeafType = RTree.LeafType;
+        alias BoxType = RTree.BoxType;
+        alias PointType = RTree.PointType;
+        alias ElementType = RTree.ElementType;
+        alias ManagementType = RTree.ManagementType;
+        static if (is(R == ElementType))
+            auto datumBox = RTree.calcElementBounds(datum);
+        else
+            BoxType datumBox = datum.box;
 
         static if (is(B == typeof(null)))
             auto subTree = tree.chooseSubTree!(R)(datumBox);
@@ -802,7 +840,7 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
                             break;
                         subTree.popFront;
                     }
-                    //tree.updateBoxes(subTree);
+                    //tree.updateBoxes(subTree); // ERROROR
 
                     if (!orphanStack.empty)
                     {
@@ -846,20 +884,38 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
                             .expand(datumBox).volume - newNodes[0].box.expand(datumBox).volume;
                         auto volumeCostB = newNodes[1].box
                             .expand(datumBox).volume - newNodes[1].box.expand(datumBox).volume;
+
+                        static assert(is(typeof((*newNodes[0])[0]) == ElementType));
+                        static if (RTree.pointsOnly)
+                        {
+                            auto seedA = BoxType(
+                                RTree.getBounds((*newNodes[0])[0]),
+                                RTree.getBounds((*newNodes[0])[0])).makeBoxInclusive;
+                            auto seedB = BoxType(
+                                RTree.getBounds((*newNodes[1])[0]),
+                                RTree.getBounds((*newNodes[1])[0])).makeBoxInclusive;
+                        }
+                        else
+                        {
+                            alias seedA = AliasSeq!();
+                            alias seedB = AliasSeq!();
+                        }
                         if (volumeCostA < volumeCostB)
                         {
                             (*newNodes[0]).addEntryToNode(datum);
                             newNodes[0].box = (*newNodes[0])[]
-                                .map!((ref n) => RTree.getBox(n))
-                                .fold!((a, b) => a.expand(b));
+                                .drop(RTree.pointsOnly ? 1 : 0)
+                                .map!((ref n) => RTree.getBounds(n))
+                                .fold!((a, b) => a.expand(b))(seedA);
                             require(newNodes[0].box.contains(datumBox));
                         }
                         else
                         {
                             (*newNodes[1]).addEntryToNode(datum);
                             newNodes[1].box = (*newNodes[1])[]
-                                .map!((ref n) => RTree.getBox(n))
-                                .fold!((a, b) => a.expand(b));
+                                .drop(RTree.pointsOnly ? 1 : 0)
+                                .map!((ref n) => RTree.getBounds(n))
+                                .fold!((a, b) => a.expand(b))(seedB);
                             require(newNodes[1].box.contains(datumBox));
                         }
                     }
@@ -976,7 +1032,18 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
             {
                 auto newLeaf = make!LeafType(tree.nodeAllocator);
                 (*newLeaf).addEntryToNode(datum);
-                newLeaf.box = datumBox;
+                static if (RTree.pointsOnly)
+                {
+                    static if (isFloatingPoint!ManagementType)
+                    {
+                        import std.math.nextUp;
+                        newLeaf.box = BoxType(datumBox.x, datumBox.y, datumBox.x.nextUp, datumBox.y.nextUp);
+                    }
+                    else
+                        newLeaf.box = BoxType(datumBox.x, datumBox.y, datumBox.x + 1, datumBox.y + 1);
+                }
+                else
+                    newLeaf.box = datumBox;
                 insert(tree, *newLeaf, subTree.length, orphanStack, subTree.reap);
                 return;
             }
@@ -986,25 +1053,29 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
     }
 }
 
-private auto chooseSubTree(T, RTree, BoxType)(ref RTree tree, BoxType searchBox)
-    if (is(BoxType == tree.BoxType))
+private auto chooseSubTree(T, RTree, BType)(ref RTree tree, BType searchBox)
+    if (is(BType == RTree.BoxType)
+        || is(BType == RTree.PointType))
 {
     return chooseSubTree!T(tree, searchBox, tree.ReferenceType(*tree.rootPtr));
 }
-private auto chooseSubTree(T, RTree, BoxType, ReferenceType)(ref RTree tree, BoxType searchBox, ReferenceType begin)
-    if (is(BoxType == RTree.BoxType)
+private auto chooseSubTree(T, RTree, BType, ReferenceType)(ref RTree tree, BType searchBox, ReferenceType begin)
+    if ((is(BType == RTree.BoxType)
+         || is(BType == RTree.PointType))
         && is(ReferenceType == RTree.ReferenceType))
 {
     import std.typecons : Tuple, tuple;
-    alias BoxType = tree.BoxType;
-    alias ManagementType = tree.ManagementType;
-    alias ReferenceType = tree.ReferenceType;
+    alias BoxType = RTree.BoxType;
+    alias PointType = RTree.PointType;
+    alias ManagementType = RTree.ManagementType;
+    alias ReferenceType = RTree.ReferenceType;
     ReferenceType activeNode = begin;
     auto nodeStack = Stack!ReferenceType(8);
     nodeStack.pushFront(activeNode);
 
     while (true)
     {
+        import ldc.intrinsics;
         import std.math : ceil;
         import core.stdc.math : logf;
         if (activeNode.type == ReferenceType.Types.leaf)
@@ -1013,18 +1084,38 @@ private auto chooseSubTree(T, RTree, BoxType, ReferenceType)(ref RTree tree, Box
                  && (is(T == RTree.NodeType)))// || is(T == RTree.LeafType)))
 //                 && (ceil(logf(tree.elementCount)/logf(tree.maxChildrenPerNode)) + 1) > nodeStack.length)
             return nodeStack;
+        //else if (!activeNode.node.nodes.walkLength )
         else if (!activeNode.node.nodes.empty)
         {
             import std.range : enumerate;
             ReferenceType bestNode;
-            ManagementType bestVolumeCost;
-            foreach (i, ref node; activeNode.node.nodes.enumerate)
-            {
-                ManagementType volumeCost = node.box.expand(searchBox).volume - node.box.volume;
-                if (volumeCost < bestVolumeCost || i == 0)
+            /+{
+                ManagementType bestDis;
+                foreach (i, ref node; activeNode.node.nodes.enumerate)
                 {
-                    bestVolumeCost = volumeCost;
-                    bestNode = node;
+                    if (!node.box.contains(searchBox))
+                        continue;
+                    import std.algorithm : map, maxElement;
+                    import std.math : abs;
+                    ManagementType dis = (node.box.center - searchBox.center)[].map!abs.maxElement;
+                    if (i == 0 || dis < bestDis)
+                    {
+                        bestDis = dis;
+                        bestNode = node;
+                    }
+                }
+            }+/ //apparently not beneficial
+            if (bestNode.isNull)
+            {
+                ManagementType bestVolumeCost;
+                foreach (i, ref node; activeNode.node.nodes.enumerate)
+                {
+                    ManagementType volumeCost = node.box.expand(searchBox).volume - node.box.volume;
+                    if (i == 0 || volumeCost < bestVolumeCost)
+                    {
+                        bestVolumeCost = volumeCost;
+                        bestNode = node;
+                    }
                 }
             }
             nodeStack.pushFront(bestNode);
@@ -1047,7 +1138,7 @@ private auto chooseSubTree(T, RTree, BoxType, ReferenceType)(ref RTree tree, Box
                         leaf.box.expand(searchBox).intersection(leaf2.box).volume
                         - leaf.box.intersection(leaf2.box).volume;
                 }
-                if (overlapCost < bestOverlapCost || i == 0)
+                if (i == 0 || overlapCost < bestOverlapCost)
                 {
                     bestOverlapCost = overlapCost;
                     bestNode = leaf;
@@ -1073,9 +1164,17 @@ private void updateBoxes(RTree, NodeStackType)(ref RTree tree, ref NodeStackType
 
     if (nodeStack.front.type == tree.ReferenceType.Types.leaf)
     {
+        static if (RTree.pointsOnly) // points need a box as seed for fold
+            auto emptyB = BoxType(
+                RTree.getBounds(nodeStack.front.leaf[][0]),
+                RTree.getBounds(nodeStack.front.leaf[][0])).makeBoxInclusive;
+        else
+            alias emptyB = AliasSeq!();
+
         nodeStack.front.leaf.box = nodeStack.front.leaf[]
-            .map!((ref n) => RTree.getBox(n))
-            .fold!((a, b) => a.expand(b));
+            .drop((RTree.pointsOnly ? 1 : 0))
+            .map!((ref n) => RTree.calcElementBounds(n))
+            .fold!((a, b) => a.expand(b))(emptyB);
         if (nodeStack.front.leaf.box == oldBox)
             return;
         nodeStack.popFront;
@@ -1085,7 +1184,7 @@ private void updateBoxes(RTree, NodeStackType)(ref RTree tree, ref NodeStackType
     {
         oldBox = nodeStack.front.node.box;
         nodeStack.front.node.box = nodeStack.front.node[]
-            .map!((ref n) => RTree.getBox(n))
+            .map!((ref n) => RTree.getBounds(n))
             .fold!((a, b) => a.expand(b));
         if (nodeStack.front.node.box == oldBox)
             return;
@@ -1154,7 +1253,7 @@ void remove(RTree, ElementType)(ref RTree tree, auto ref ElementType element)
     import std.stdio;
     alias ReferenceType = RTree.ReferenceType;
     alias BoxType = RTree.BoxType;
-    immutable searchBox = RTree.getBox(element);
+    immutable searchBox = RTree.getBounds(element);
     auto fr = tree.findEntry(element);
     Stack!ReferenceType orphanStack;
     scope(exit)
@@ -1217,7 +1316,7 @@ void remove(RTree, ElementType)(ref RTree tree, auto ref ElementType element)
 
         if (fr.nodeStack.front.leaf.length > 0)
             fr.nodeStack.front.leaf.box = fr.nodeStack.front.leaf[]
-                .map!((ref n) => RTree.getBox(n))
+                .map!((ref n) => RTree.getBounds(n))
                 .fold!((a, b) => a.expand(b));
         /+if (oldBox == fr.nodeStack.front.leaf.box) // boxes won't shrink any further, terminate early
             return;
@@ -1242,6 +1341,7 @@ private auto splitFull(RTree, N)(ref RTree tree, ref N node)
     alias ManagementType = RTree.ManagementType;
     alias BoxType = RTree.BoxType;
     alias NodeType = RTree.NodeType;
+    alias ElementType = RTree.ElementType;
 
     static if (is(N == RTree.NodeType))
     {
@@ -1259,8 +1359,10 @@ private auto splitFull(RTree, N)(ref RTree tree, ref N node)
     import std.range : walkLength;
     import std.algorithm.mutation : copy;
     import std.algorithm.sorting : sort;
-    ChildType[maxChildrenPerNode][dimensionCount * 2] axes;
-    foreach (dimension; 0 .. dimensionCount)
+    enum sortBothDirs = !(is(ChildType == RTree.ElementType) && RTree.pointsOnly);
+
+    ChildType[maxChildrenPerNode][dimensionCount * (sortBothDirs ? 2 : 1)] axes;
+    foreach (dimension; 0 .. dimensionCount) // sort by lower bound
     {
         import std.algorithm.mutation : copy;
         import std.algorithm.iteration : map;
@@ -1268,15 +1370,22 @@ private auto splitFull(RTree, N)(ref RTree tree, ref N node)
 
         node[].copy(axes[dimension][]);
         // note that .min and .max are members of Box, not free function calls
-        axes[dimension][]
-            .sort!((a, b) => RTree.getBox(a).min[dimension] < RTree.getBox(b).min[dimension]);
+        static if (is(ChildType == RTree.ElementType) && RTree.pointsOnly)
+            axes[dimension][]
+                .sort!((a, b) => RTree.getBounds(a)[dimension] < RTree.getBounds(b)[dimension]);
+        else
+            axes[dimension][]
+                .sort!((a, b) => RTree.getBounds(a).min[dimension] < RTree.getBounds(b).min[dimension]);
+
+
     }
-    foreach (dimension; 0 .. dimensionCount)
+    static if (sortBothDirs)
+    foreach (dimension; 0 .. dimensionCount) // sort by upper bound
     {
         // it's probable that sorting max results in a similar order as min does
         axes[dimension][].copy(axes[dimension + dimensionCount][]);
         axes[dimension + dimensionCount][]
-            .sort!((a, b) => RTree.getBox(a).max[dimension] < RTree.getBox(b).max[dimension]);
+            .sort!((a, b) => RTree.getBounds(a).max[dimension] < RTree.getBounds(b).max[dimension]);
     }
 
     ChildType[] bestGroupA;
@@ -1285,7 +1394,7 @@ private auto splitFull(RTree, N)(ref RTree tree, ref N node)
     BoxType bestBoxA;
     BoxType bestBoxB;
 
-    foreach (dimension; 0 .. dimensionCount * 2)
+    foreach (dimension; 0 .. dimensionCount * (sortBothDirs ? 2 : 1))
     {
         require((maxChildrenPerNode - 2 * minChildrenPerNode + 2) > 0);
         //foreach (k; 0 .. maxEntriesPerPage - 2 * minEntriesPerPage + 2)
@@ -1295,12 +1404,32 @@ private auto splitFull(RTree, N)(ref RTree tree, ref N node)
             import std.algorithm.iteration : map, fold, sum, filter;
             ChildType[] groupA = axes[dimension][].take(minChildrenPerNode + k);
             ChildType[] groupB = axes[dimension][].drop(minChildrenPerNode + k);
+            static if (is(ChildType == ElementType) && RTree.pointsOnly) // points need a box as seed for fold
+            {
+                auto emptyA = BoxType(RTree.getBounds(groupA.front), RTree.getBounds(groupA.front)).makeBoxInclusive;
+                auto emptyB = BoxType(RTree.getBounds(groupB.front), RTree.getBounds(groupB.front)).makeBoxInclusive;
+            }
+            else
+            {
+                alias emptyA = AliasSeq!();
+                alias emptyB = AliasSeq!();
+            }
             auto boxA = groupA[]
-                .map!(n => RTree.getBox(n))
-                .fold!((a, b) => a.expand(b));
+                .drop(is(ChildType == ElementType) && RTree.pointsOnly ? 1 : 0)
+                .map!(n => RTree.getBounds(n))
+                .fold!((a, b) => a.expand(b))(emptyA);
+            foreach (ref e; groupA[])
+            {
+                require(boxA.contains(RTree.getBounds(e)));
+            }
             auto boxB = groupB[]
-                .map!(n => RTree.getBox(n))
-                .fold!((a, b) => a.expand(b));
+                .drop(is(ChildType == ElementType) && RTree.pointsOnly ? 1 : 0)
+                .map!(n => RTree.getBounds(n))
+                .fold!((a, b) => a.expand(b))(emptyB);
+            foreach (ref e; groupB[])
+            {
+                require(boxB.contains(RTree.getBounds(e)));
+            }
             immutable perimeterA = boxA.size.v[].sum ^^ 2;
             immutable perimeterB = boxB.size.v[].sum ^^ 2;
             immutable perimeterCost = perimeterA + perimeterB;
@@ -1338,15 +1467,15 @@ private auto splitFull(RTree, N)(ref RTree tree, ref N node)
     {
         import std.algorithm.searching : canFind;
         require((*newNodeA)[].canFind(e)
-               || (*newNodeB)[].canFind(e));
+                || (*newNodeB)[].canFind(e));
     }
     foreach (ref e; (*newNodeA)[])
     {
-        require(newNodeA.box.contains(RTree.getBox(e)));
+        require(newNodeA.box.contains(RTree.getBounds(e)));
     }
     foreach (ref e; (*newNodeB)[])
     {
-        require(newNodeB.box.contains(RTree.getBox(e)));
+        require(newNodeB.box.contains(RTree.getBounds(e)));
     }
 
     // destroy original node as long as it's not the root
@@ -1374,6 +1503,16 @@ private auto findEntry(RTree, T)(ref RTree tree, ref T entry)
     return findEntry!false(tree, entry);
 }
 
+auto makeBoxInclusive(T)(T b)
+{
+    import std.algorithm.iteration : each;
+    static if (isFloatingPoint!(typeof(b.max[0])))
+        b.max[].each!((ref n) => n = n.nextUp);
+    else
+        b.max[].each!((ref n) => n += 1);
+    return b;
+}
+
 import std.typecons : Tuple;
 private Tuple!(Stack!(RTree.ReferenceType), "nodeStack", size_t, "index")
         findEntry(bool exhaustive, RTree, T)(ref RTree tree, ref T entry)
@@ -1382,7 +1521,7 @@ private Tuple!(Stack!(RTree.ReferenceType), "nodeStack", size_t, "index")
         || is(T == RTree.NodeType))
 {
     import std.typecons : Tuple, tuple;
-    immutable(RTree.BoxType) searchBox = RTree.getBox(entry);
+    immutable(RTree.BoxType) searchBox = RTree.getBounds(entry);
     alias ReferenceType = RTree.ReferenceType;
     alias ReturnType = Tuple!(Stack!ReferenceType, "nodeStack", size_t, "index");
     auto arrStack = Stack!(ReferenceType[])(8);
@@ -1461,7 +1600,7 @@ private Tuple!(Stack!(RTree.ReferenceType), "nodeStack", size_t, "index")
                 if (arrStack.front.front == ReferenceType(entry)) // found entry;
                     break;
             }
-            if (arrStack.front.front.node.box.contains(RTree.getBox(entry)) || exhaustive)
+            if (arrStack.front.front.node.box.contains(RTree.getBounds(entry)) || exhaustive)
             {
                 foreach (e; arrStack.front.front.node[])
                     require(arrStack.front.front.node.box.contains(e.box));
@@ -1535,22 +1674,23 @@ void finn()
     import std.typecons;
     Mt19937 gen;
     gen.seed(3);
-    alias BoxType = Box!(int, 2);
+    alias BoxType = Box!(int, 2); //Box!(int, 2);
     auto nodes = File("views/vertdata").byLine.map!((a){double x; double y;
             a.formattedRead!"%f, %f"(y, x);
-            return vec2!int(cast(int)(x*10000.0),cast(int)(y*10000.0));}).array;
+            return vec2!int(cast(int)(x*10000.0),cast(int)(y*10000.0));});
     stderr.writeln("loaded nodes");
     alias ElementType = Tuple!(Vector!(int, 2), "data", Color, "color");
-    auto pnnn = nodes.enumerate.map!(n => ElementType(n.value, Color.blue)).cycle.take(1_000_000).array;
+    auto pnnn = nodes.enumerate.map!(n => ElementType(n.value, Color.blue)).take(1_000_000).array;
     static auto calcElementBounds(ElementType n)
     {
-        return BoxType(n.data.x,
+        return Box!(int, 2)(n.data.x,
                        n.data.y,
                        n.data.x + 1,//.nextUp,// + 0.001,
                        n.data.y + 1//.nextUp// + 0.001
                        );
+        //return BoxType(n.data, 1);
     }
-    RTree!(typeof(pnnn.front), calcElementBounds, 2, 8, 4, int) tree;
+    RTree!(typeof(pnnn.front), calcElementBounds, 8, 4) tree;
     tree.initialize;    
 
     dirEntries("trees/", SpanMode.shallow, false).each!(std.file.remove);
@@ -1569,9 +1709,13 @@ void finn()
     auto ttime = MonoTime.currTime + 20.msecs;
     foreach (i, add; pnnn)
     {
+        //auto mfile = File(format!"trees/map%08s.asy"(i), "w");
+        //auto mwriter = mfile.lockingTextWriter;
         auto start = MonoTime.currTime.ticks;
         tree.insert(add);
         auto end = MonoTime.currTime.ticks;
+        //tree.drawTree(mwriter, nullSink);
+        //mfile.close;
         samples[i] += end - start;
         //writer.formattedWrite!"%s,%s,\n"(i, (end - start).ticksToNSecs);
         //assert((end - start).ticksToNSecs < 400000);
@@ -1583,6 +1727,12 @@ void finn()
         }
     }
 
+    /+writefln!"dr";
+    auto ff = File("trees/map.asy", "w");
+    auto ww = ff.lockingTextWriter;
+    tree.drawTree(ww, nullSink);
+    ff.close;
+    +//+
     enum c = vec2!int(92000, 540000);
 
     static struct Rad
@@ -1598,8 +1748,8 @@ void finn()
 
         static bool opCall(ref ElementType arg, ref Rad rad)
         {
-            immutable vec2!int coordinate = typeof(tree).getBox(arg).min;
-            int newRad = (coordinate-coor)[].map!(n => n < 0 ? -n : n).fold!((a,b) => a + b);
+            immutable vec2!int coordinate = typeof(tree).getBounds(arg).center;
+            int newRad = (coordinate - coor)[].map!(n => n < 0 ? -n : n).fold!((a,b) => max(a, b));
             if (newRad <= rad.r)
             {
                 //writefln!":::%s"(newRad);
@@ -1613,13 +1763,14 @@ void finn()
 
     static struct TouchesCircle
     {
-        static bool opCall(Box!(int, 2) box, ref Rad rad)
+        static bool opCall(BoxType box, ref Rad rad)
         {
             if (box.contains(c)) // slightly faster
             {
                 rad.boxpCnt++;
                 return true;
             }
+            //box.radius += rad.r;
             auto newV = box.max.x + rad.r;
             if (newV >= box.max.x)
                 box.max.x += rad.r;
@@ -1657,11 +1808,7 @@ void finn()
         }
     }
 
-    writefln!"dr";
-    auto ff = File("trees/map.asy", "w");
-    auto ww = ff.lockingTextWriter;
-    tree.drawTree(ww, nullSink);
-    ff.close;
+
     writefln!"mt";
 
     auto matches = RTreeRange!(typeof(tree), false, TouchesCircle, CloserElement)(tree);
@@ -1690,7 +1837,7 @@ void finn()
     foreach (i, s; samples)
     {
         writer.formattedWrite!"%s,%s\n"(i, s.ticksToNSecs);
-    }
+    }+/
     file.close;
 
 
@@ -1699,6 +1846,3 @@ void finn()
     auto destrEnd = MonoTime.currTime;
     writefln!"destr time: %s"(destrEnd - destrStart);
 }
-
-
-

@@ -1075,9 +1075,10 @@ private auto chooseSubTree(T, RTree, BType, ReferenceType)(ref RTree tree, BType
 
     while (true)
     {
-        import ldc.intrinsics;
+        //import ldc.intrinsics;
         import std.math : ceil;
         import core.stdc.math : logf;
+
         if (activeNode.type == ReferenceType.Types.leaf)
             return nodeStack;
         else if (activeNode.node[].walkLength < tree.maxChildrenPerNode
@@ -1085,7 +1086,7 @@ private auto chooseSubTree(T, RTree, BType, ReferenceType)(ref RTree tree, BType
 //                 && (ceil(logf(tree.elementCount)/logf(tree.maxChildrenPerNode)) + 1) > nodeStack.length)
             return nodeStack;
         //else if (!activeNode.node.nodes.walkLength )
-        else if (!activeNode.node.nodes.empty)
+        else if (!activeNode.node.nodes.empty) // hot branch!
         {
             import std.range : enumerate;
             ReferenceType bestNode;
@@ -1105,22 +1106,23 @@ private auto chooseSubTree(T, RTree, BType, ReferenceType)(ref RTree tree, BType
                     }
                 }
             }+/ //apparently not beneficial
-            if (bestNode.isNull)
+            //if (bestNode.isNull)
+            //{
+            ManagementType bestVolumeCost;
+            foreach (i, ref node; activeNode.node.nodes.enumerate)
             {
-                ManagementType bestVolumeCost;
-                foreach (i, ref node; activeNode.node.nodes.enumerate)
+                ManagementType volumeCost = node.box.expand(searchBox).volume - node.box.volume;
+                if (i == 0 || volumeCost <= bestVolumeCost) // <= in place of < measured 3 % speedup
                 {
-                    ManagementType volumeCost = node.box.expand(searchBox).volume - node.box.volume;
-                    if (i == 0 || volumeCost < bestVolumeCost)
-                    {
-                        bestVolumeCost = volumeCost;
-                        bestNode = node;
-                    }
+                    bestVolumeCost = volumeCost;
+                    bestNode = node;
                 }
+                if (volumeCost == 0) // measured 7 % speedup
+                    break;
             }
+            //}
             nodeStack.pushFront(bestNode);
             activeNode = bestNode;
-            // ditto regarding ties
         }
         else if (!activeNode.node.leaves.empty)
         {
@@ -1681,12 +1683,12 @@ void finn()
     stderr.writeln("loaded nodes");
     alias ElementType = Tuple!(Vector!(int, 2), "data", Color, "color");
     auto pnnn = nodes.enumerate.map!(n => ElementType(n.value, Color.blue)).take(1_000_000).array;
-    static auto calcElementBounds(ElementType n)
+    static auto calcElementBounds(ref ElementType n)
     {
-        return Box!(int, 2)(n.data.x,
+        return Vector!(int, 2)(n.data.x,
                        n.data.y,
-                       n.data.x + 1,//.nextUp,// + 0.001,
-                       n.data.y + 1//.nextUp// + 0.001
+                       //n.data.x + 1,//.nextUp,// + 0.001,
+                       //n.data.y + 1//.nextUp// + 0.001
                        );
         //return BoxType(n.data, 1);
     }

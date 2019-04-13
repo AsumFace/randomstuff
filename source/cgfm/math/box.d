@@ -26,7 +26,7 @@ struct Box(T, int N)
 
         /// Construct a box which extends between 2 points.
         /// Boundaries: min is inside the box, max is just outside.
-        this(bound_t min_, bound_t max_)
+        this(bound_t min_, bound_t max_) pure
         {
             min = min_;
             max = max_;
@@ -63,40 +63,40 @@ struct Box(T, int N)
         @property
         {
             /// Returns: Dimensions of the box.
-            bound_t size() const
+            bound_t size() const pure
             {
                 return max - min;
             }
 
             /// Returns: Center of the box.
-            bound_t center() const
+            bound_t center() const pure
             {
                 return (min + max) / 2;
             }
 
             /// Returns: Width of the box, always applicable.
             static if (N >= 1)
-            T width() const @property
+            T width() const @property pure
             {
                 return max.x - min.x;
             }
 
             /// Returns: Height of the box, if applicable.
             static if (N >= 2)
-            T height() const @property
+            T height() const @property pure
             {
                 return max.y - min.y;
             }
 
             /// Returns: Depth of the box, if applicable.
             static if (N >= 3)
-            T depth() const @property
+            T depth() const @property pure
             {
                 return max.z - min.z;
             }
 
             /// Returns: Signed volume of the box.
-            T volume() const
+            T volume() const pure
             {
                 T res = 1;
                 bound_t size = size();
@@ -106,7 +106,7 @@ struct Box(T, int N)
             }
 
             /// Returns: true if empty.
-            bool empty() const
+            bool empty() const pure
             {
                 bound_t size = size();
                 mixin(generateLoopCode!("if (min[@] == max[@]) return true;", N)());
@@ -115,7 +115,7 @@ struct Box(T, int N)
         }
 
         /// Returns: true if it contains point.
-        bool contains(bound_t point) const
+        bool contains(bound_t point) const pure
         {
             require(isSorted());
             for(int i = 0; i < N; ++i)
@@ -126,7 +126,7 @@ struct Box(T, int N)
         }
 
         /// Returns: true if it contains box other.
-        bool contains(Box other) const
+        bool contains(Box other) const pure
         {
             require(isSorted());
             require(other.isSorted());
@@ -137,7 +137,7 @@ struct Box(T, int N)
 
         /// Euclidean squared distance from a point.
         /// See_also: Numerical Recipes Third Edition (2007)
-        real squaredDistance(bound_t point) const
+        real squaredDistance(bound_t point) const pure
         {
             require(isSorted());
             real distanceSquared = 0;
@@ -154,14 +154,14 @@ struct Box(T, int N)
 
         /// Euclidean distance from a point.
         /// See_also: squaredDistance.
-        real distance(bound_t point) const
+        real distance(bound_t point) const pure
         {
             return sqrt(squaredDistance(point));
         }
 
         /// Euclidean squared distance from another box.
         /// See_also: Numerical Recipes Third Edition (2007)
-        real squaredDistance(Box o) const
+        real squaredDistance(Box o) const pure
         {
             require(isSorted());
             require(o.isSorted());
@@ -179,7 +179,7 @@ struct Box(T, int N)
 
         /// Euclidean distance from another box.
         /// See_also: squaredDistance.
-        real distance(Box o) const
+        real distance(Box o) const pure
         {
             return sqrt(squaredDistance(o));
         }
@@ -187,7 +187,7 @@ struct Box(T, int N)
         /// Assumes sorted boxes.
         /// This function deals with empty boxes correctly.
         /// Returns: Intersection of two boxes.
-        Box intersection(Box o) const
+        Box intersection(Box o) const pure
         {
             require(isSorted());
             require(o.isSorted());
@@ -213,14 +213,14 @@ struct Box(T, int N)
         /// Assumes sorted boxes.
         /// This function deals with empty boxes correctly.
         /// Returns: Intersection of two boxes.
-        bool intersects(Box other) const
+        bool intersects(Box other) const pure
         {
             Box inter = this.intersection(other);
             return inter.isSorted() && !inter.empty();
         }
 
         /// Extends the area of this Box.
-        Box grow(bound_t space) const
+        Box grow(bound_t space) const pure
         {
             Box res = this;
             res.min -= space;
@@ -229,53 +229,54 @@ struct Box(T, int N)
         }
 
         /// Shrink the area of this Box. The box might became unsorted.
-        Box shrink(bound_t space) const
+        Box shrink(bound_t space) const pure
         {
             return grow(-space);
         }
 
         /// Extends the area of this Box.
-        Box grow(T space) const
+        Box grow(T space) const pure
         {
             return grow(bound_t(space));
         }
 
         /// Translate this Box.
-        Box translate(bound_t offset) const
+        Box translate(bound_t offset) const pure
         {
             return Box(min + offset, max + offset);
         }
 
         /// Shrinks the area of this Box.
         /// Returns: Shrinked box.
-        Box shrink(T space) const
+        Box shrink(T space) const pure
         {
             return shrink(bound_t(space));
         }
 
         /// Expands the box to include point.
         /// Returns: Expanded box.
-        Box expand(bound_t point) const
+        Box expand(bound_t point) const pure
         {
             import cgfm.math.vector;
             import std.range : lockstep;
             Box result;
             result.min = minByElem(min, point);
-            foreach (ref r, t, p; lockstep(result.max[], max[], point[]))
+
+            foreach (i; 0 .. N) // lockstep works but isn't pure
             {
-                if (p >= t)
+                if (point[i] >= max[i])
                 {
                     import std.traits;
                     static if (isFloatingPoint!T)
                     {
                         import std.math : nextUp;
-                        r = p.nextUp;
+                        result.max[i] = point[i].nextUp;
                     }
                     else
-                        r = p + 1;
+                        result.max[i] = point[i] + 1;
                 }
                 else
-                    r = t;
+                    result.max[i] = max[i];
             }
             return result;
         }
@@ -283,7 +284,7 @@ struct Box(T, int N)
         /// Expands the box to include another box.
         /// This function deals with empty boxes correctly.
         /// Returns: Expanded box.
-        Box expand(Box other) const
+        Box expand(Box other) const pure
         {
             require(isSorted());
             require(other.isSorted());
@@ -306,7 +307,7 @@ struct Box(T, int N)
         }
 
         /// Returns: true if each dimension of the box is >= 0.
-        bool isSorted() const
+        bool isSorted() const pure
         {
             for(int i = 0; i < N; ++i)
             {
@@ -317,7 +318,7 @@ struct Box(T, int N)
         }
 
         /// Assign with another box.
-        ref Box opAssign(U)(U x) if (isBox!U)
+        ref Box opAssign(U)(U x) pure if (isBox!U)
         {
             static if(is(U.element_t : T))
             {
@@ -339,13 +340,13 @@ struct Box(T, int N)
         }
 
         /// Returns: true if comparing equal boxes.
-        bool opEquals(U)(U other) const if (is(U : Box))
+        bool opEquals(U)(U other) const pure if (is(U : Box))
         {
             return (min == other.min) && (max == other.max);
         }
 
         /// Cast to other box types.
-        U opCast(U)() const if (isBox!U)
+        U opCast(U)() const pure if (isBox!U)
         {
             U b = void;
             for(int i = 0; i < N; ++i)

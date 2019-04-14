@@ -1,3 +1,5 @@
+inc = include_directories('../../..')
+
 dcompute_driver_cuda_sources = [
     'buffer.d',
     'context.d',
@@ -11,4 +13,5 @@ dcompute_driver_cuda_sources = [
     'queue.d']
 
 dcompute_driver_cuda = library('dcompute_driver_cuda',
-                               dcompute_driver_cuda_sources);
+                               dcompute_driver_cuda_sources,
+                               include_directories: inc)

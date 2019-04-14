@@ -1,6 +1,8 @@
 subdir('opencl')
 subdir('cuda')
 
+inc = include_directories('../..')
+
 dcompute_std_sources = [
     'atomic.d',
     'floating.d',
@@ -14,4 +16,5 @@ dcompute_std_sources = [
 
 dcompute_std = library('dcompute_std',
                        dcompute_std_sources,
-                       link_with : [dcompute_std_opencl, dcompute_std_cuda])
+                       # link_with : [dcompute_std_opencl, dcompute_std_cuda],
+                       include_directories: inc)

@@ -62,12 +62,12 @@ void main()
     dirEntries("trees/", SpanMode.shallow, false).each!(std.file.remove);
 
 
-    Point[] points = new Point[10000];
+    Point[] points = new Point[1000];
     Point[][4] rkPoints;
-    Point[] assumePoints = new Point[10000];
-    Point[] tmpPoints = new Point[10000];
+    Point[] assumePoints = new Point[1000];
+    Point[] tmpPoints = new Point[1000];
     foreach (ref e; rkPoints)
-        e = new Point[10000];
+        e = new Point[1000];
 
     //points[0].position = vec2l(int.max/2,0);
     //points[0].momentum = vec2d(0, 50_000_00);
@@ -82,15 +82,14 @@ void main()
 
     ulong t = 0;
 
-    File file = File(format!"trees/%08s.asy"(t++), "w");
+    File file = File(format!"trees/%08s.svg"(t++), "w");
     auto writer = file.lockingTextWriter;
-    writer.formattedWrite!"settings.outformat=\"png\";\n";
-    writer.formattedWrite!"unitsize(0.001mm);\nsize(20cm, 20cm, (-3e9,-3e9), (3e9, 3e9));\n";
-    foreach (ref p; points)
+    writer.writeSVGHeader;
+    foreach (i, ref p; points)
     {
-        writer.formattedWrite!"dot((%s, %s));\n"(p.position.x, p.position.y);
+        writer.writeDot(i, p, i < 500 ? Colors.orange : Colors.blue);
     }
-    writer.formattedWrite!"clip(box((-3e9,-3e9), (3e9, 3e9)));\nfixedscaling((-3e9,-3e9), (3e9, 3e9));\n";
+    writer.writeSVGFooter;
     file.close;
 
     import std.parallelism;
@@ -103,27 +102,45 @@ void main()
             output[i].position = vec2l(0,0);
             output[i].momentum = vec2f(0,0);
             output[i].position = cast(vec2l)input[i].momentum;
+            bool tcol = false;
+            bool ocol = false;
+            if (i < 500)
+                tcol = true;
+            else
+                tcol = false;
             foreach (ii; 0 .. input.length)
             {
+                if (ii < 500)
+                    ocol = true;
+                else
+                    ocol = false;
                 if (input[i].position == input[ii].position)
                     continue;
                 auto relLocL = input[ii].position - input[i].position;
                 auto relLocD = cast(vec2d)(relLocL);
-                output[i].momentum +=
-                    relLocD.normalized * max((10000.0/((relLocD*5.0/int.max).squaredMagnitude)
-                                                - 1000.0/((relLocD*5.0/int.max).squaredMagnitude ^^ 2)), -10000000.0);
+                if (tcol != ocol) // attraction
+                {
+                    output[i].momentum +=
+                        relLocD.normalized * max((10000.0/((relLocD*9.0/int.max).squaredMagnitude)
+                                                - 10000.0/((relLocD*9.0/int.max).squaredMagnitude ^^ 2)), -10000000.0);
+                }
+                else // repulsion
+                {
+                    output[i].momentum +=
+                        relLocD.normalized * max(-5000.0/((relLocD*9.0/int.max).squaredMagnitude), -10000000.0);
+                }
             }
-            output[i].momentum -= input[i].momentum * 0.05;
+            output[i].momentum -= input[i].momentum * 0.001;
         }
     }
 
-    while (t < 2000)
+    while (t < 16000)
     {
         //Thread.sleep(100.msecs);
         writeln(t);
         foreach (i; 0 .. rk4t.order)
             rkPoints[i][] = Point.init;
-        foreach (i; 0 .. rk4t.order)
+        static foreach (i; 0 .. rk4t.order)
         {
             assumePoints[] = points[];
             foreach (ii; 0 .. rk4t.matrix[i][].length)
@@ -144,16 +161,79 @@ void main()
             points[] += rkPoints[i][];
         }
 
-        file = File(format!"trees/%08s.asy"(t++), "w");
+        file = File(format!"trees/%08s.svg"(t++), "w");
         writer = file.lockingTextWriter;
-        writer.formattedWrite!"settings.outformat=\"png\";\n";
-        writer.formattedWrite!"unitsize(0.001mm);\nsize(20cm, 20cm, (-3e9,-3e9), (3e9, 3e9));\n";
-        foreach (ref p; points)
+        writer.writeSVGHeader;
+        foreach (i, ref p; points)
         {
-            writer.formattedWrite!"dot((%s, %s));\n"(p.position.x, p.position.y);
+            writer.writeDot(i, p, i < 500 ? Colors.orange : Colors.blue);
         }
-        writer.formattedWrite!"clip(box((-3e9,-3e9), (3e9, 3e9)));\nfixedscaling((-3e9,-3e9), (3e9, 3e9));\n";
+        writer.writeSVGFooter;
         file.close;
     }
 }
 
+void writeSVGHeader(W)(W w)
+{
+    import std.format;
+
+    w.formattedWrite!`<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+    <svg
+       xmlns:dc="http://purl.org/dc/elements/1.1/"
+       xmlns:cc="http://creativecommons.org/ns#"
+       xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+       xmlns:svg="http://www.w3.org/2000/svg"
+       xmlns="http://www.w3.org/2000/svg"
+       id="svg8"
+       version="1.1"
+       viewBox="-1000 -1000 2000 2000"
+       height="1000"
+       width="1000">
+      <defs
+         id="defs2" />
+      <metadata
+         id="metadata5">
+        <rdf:RDF>
+          <cc:Work
+             rdf:about="">
+            <dc:format>image/svg+xml</dc:format>
+            <dc:type
+               rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+            <dc:title></dc:title>
+          </cc:Work>
+        </rdf:RDF>
+      </metadata>
+      <g
+         transform="translate(0,0)"
+         id="layer1">
+      <rect x="-1000" y="-1000" width="200%%" height="200%%" fill="white"/>`;
+}
+
+enum Colors
+{
+    blue = "#0078ff",
+    gray = "#424242",
+    orange = "#fd6600"
+}
+
+void writeDot(W)(W w, size_t id, Point point, Colors color)
+{
+    import std.format;
+
+    w.formattedWrite!`
+    <circle
+    r="3.0"
+    cy="%s"
+    cx="%s"
+    id="path%s"
+    style="opacity:1;fill:%(%c%);fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.0;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers fill stroke" />`(point.position.x/(cast(double)(int.max/1000)), point.position.y/(cast(double)(int.max/1000)), id, color);
+}
+
+void writeSVGFooter(W)(W w)
+{
+    import std.format;
+
+    w.formattedWrite!`
+    </g>
+    </svg>`;
+}

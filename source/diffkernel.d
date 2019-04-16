@@ -8,6 +8,7 @@ import cgfm.math.vector;
 
 @kernel void CLdiffEq(ConstantPointer!Point input, GlobalPointer!Point output, uint len)
 {
+    import std.algorithm.comparison : max;
     auto gi = GlobalIndex.x;
     output[gi].position = vec2l(0,0);
     output[gi].momentum = vec2f(0,0);
@@ -18,7 +19,7 @@ import cgfm.math.vector;
             continue;
         auto relLocL = input[ii].position - input[gi].position;
         auto relLocD = cast(vec2d)(relLocL);
-        output[i].momentum +=
+        output[gi].momentum +=
             relLocD.normalized * max((10000.0/((relLocD*5.0/int.max).squaredMagnitude)
                                         - 1000.0/((relLocD*5.0/int.max).squaredMagnitude ^^ 2)), -10000000.0);
     }

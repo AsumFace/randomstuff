@@ -1,6 +1,7 @@
 project('abb', 'd',
         license : 'BSL-1.0')
 
+
 subdir('source')
 
 dlang = import('dlang')

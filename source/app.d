@@ -12,13 +12,14 @@ struct Point
     //float mass = 1.0;
     Vector!(long, 2) position;
     Vector!(double, 2) momentum;
+    Colors polarity;
     string toString()
     {
-        import std.conv;
-        return position[0].to!string;
+        import std.format;
+        return format!"%s %s %s %s"(position.x, position.y, momentum.x, momentum.y);
     }
 
-    auto opOpAssign(string op, T)(T rhs)
+    ref typeof(this) opOpAssign(string op, T)(T rhs)
     {
         import std.algorithm.iteration : each;
         static if (is(T : typeof(this)))
@@ -28,15 +29,15 @@ struct Point
         }
         else
         {
-            mixin("position.each!((ref n) => n " ~ op ~ "= rhs);");
-            mixin("momentum.each!((ref n) => n " ~ op ~ "= rhs);");
+            mixin("position.v[].each!((ref n) => n " ~ op ~ "= rhs);");
+            mixin("momentum.v[].each!((ref n) => n " ~ op ~ "= rhs);");
         }
         return this;
     }
 
     auto opBinary(string op, T)(T rhs)
     {
-        typeof(this) result;
+        typeof(this) result = this;
         result.opOpAssign!(op, T)(rhs);
         return result;
     }
@@ -62,20 +63,31 @@ void main()
     dirEntries("trees/", SpanMode.shallow, false).each!(std.file.remove);
 
 
-    Point[] points = new Point[1000];
-    Point[][4] rkPoints;
-    Point[] assumePoints = new Point[1000];
-    Point[] tmpPoints = new Point[1000];
-    foreach (ref e; rkPoints)
-        e = new Point[1000];
+    Point[] points = new Point[200];
+    Point[] rkPoints = new Point[200];
+    Point[] assumePoints = new Point[200];
+    Point[] tmpPoints = new Point[200];
 
-    //points[0].position = vec2l(int.max/2,0);
-    //points[0].momentum = vec2d(0, 50_000_00);
     foreach (i, ref p; points)
     {
+        import std.complex;
+        final switch (i % 4)
+        {
+        case 0:
+            p.polarity = Colors.orange;
+            break;
+        case 1:
+            p.polarity = Colors.blue;
+            break;
+        case 2:
+            p.polarity = Colors.purple;
+            break;
+        case 3:
+            p.polarity = Colors.green;
+            break;
+        }
         p.position = vec2l(uniform!int(gen), uniform!int(gen));
-        //p.mass = 1;
-        p.momentum = vec2d(0,0);
+        p.momentum = vec2d(0, 0);
     }
 
     import rk;
@@ -87,86 +99,86 @@ void main()
     writer.writeSVGHeader;
     foreach (i, ref p; points)
     {
-        writer.writeDot(i, p, i < 500 ? Colors.orange : Colors.blue);
+        writer.writeDot(i, p, 5.0);
     }
     writer.writeSVGFooter;
     file.close;
 
     import std.parallelism;
-    void diffEq(Point[] input, Point[] output)
+    void diffEq(const(Point[]) input, Point[] output, const(double) t)
     {
-        foreach (i; iota(0, input.length).parallel(64))
+        foreach (i; iota(0, input.length).parallel(12))
         {
 
             //writeln(input[i].momentum);
             output[i].position = vec2l(0,0);
             output[i].momentum = vec2f(0,0);
-            output[i].position = cast(vec2l)input[i].momentum;
-            bool tcol = false;
-            bool ocol = false;
-            if (i < 500)
-                tcol = true;
-            else
-                tcol = false;
+            output[i].position = cast(vec2l)(input[i].momentum * t) * 5;
+
             foreach (ii; 0 .. input.length)
             {
-                if (ii < 500)
-                    ocol = true;
-                else
-                    ocol = false;
                 if (input[i].position == input[ii].position)
                     continue;
                 auto relLocL = input[ii].position - input[i].position;
                 auto relLocD = cast(vec2d)(relLocL);
-                if (tcol != ocol) // attraction
+                output[i].polarity = input[i].polarity;
+
+                if (relLocD.squaredMagnitude < (20e6^^2.0))
                 {
-                    output[i].momentum +=
-                        relLocD.normalized * max((10000.0/((relLocD*9.0/int.max).squaredMagnitude)
-                                                - 10000.0/((relLocD*9.0/int.max).squaredMagnitude ^^ 2)), -10000000.0);
+                    output[i].momentum -= relLocD.normalized * 2.5e-8 * (20e6^^2 - relLocD.squaredMagnitude);
                 }
-                else // repulsion
+                else if (force(input[i].polarity, input[ii].polarity) == 1) // attraction
                 {
                     output[i].momentum +=
-                        relLocD.normalized * max(-5000.0/((relLocD*9.0/int.max).squaredMagnitude), -10000000.0);
+                        relLocD.normalized * 31e19 / max(relLocD.squaredMagnitude, 1e15);
+                }
+                else if (force(input[i].polarity, input[ii].polarity) == -1) // repulsion
+                {
+                    output[i].polarity = input[i].polarity;
+                    output[i].momentum -=
+                        relLocD.normalized * 60e19 / max(relLocD.squaredMagnitude, 1e15);
                 }
             }
-            output[i].momentum -= input[i].momentum * 0.001;
+            output[i].momentum -= input[i].momentum * 0.05;
         }
     }
 
-    while (t < 16000)
+    while (t < 20000)
     {
-        //Thread.sleep(100.msecs);
         writeln(t);
-        foreach (i; 0 .. rk4t.order)
-            rkPoints[i][] = Point.init;
-        static foreach (i; 0 .. rk4t.order)
-        {
-            assumePoints[] = points[];
-            foreach (ii; 0 .. rk4t.matrix[i][].length)
-            {
-                tmpPoints[] = rkPoints[ii][];
-                tmpPoints[].each!((ref n) => n *= rk4t.matrix[i][ii]);
-                assumePoints[] += tmpPoints[];
-            }
-            //writeln(assumePoints, rkPoints);
-            diffEq(assumePoints[], rkPoints[i][]);
-        }
-        foreach (i; 0 .. rk4t.order)
-        {
-            //writeln(rkPoints, rk4t.weights[i]);
-            rkPoints[i][].each!((ref n) => n *= rk4t.weights[i]);
-            //writeln(rkPoints);
 
-            points[] += rkPoints[i][];
+        assumePoints[] = points[];
+        diffEq(assumePoints[], tmpPoints[], 0.0);
+        foreach (i; 0 .. points[].length) // 1st
+        {
+            rkPoints[i] = tmpPoints[i] * 1.0/6.0;
+            assumePoints[i] = points[i] + tmpPoints[i] * 0.5;
         }
+        diffEq(assumePoints[], tmpPoints[], 0.5);
+        foreach (i; 0 .. points[].length) // 2nd
+        {
+            rkPoints[i] += tmpPoints[i] * 1.0/3.0;
+            assumePoints[i] = points[i] + tmpPoints[i] * 0.5;
+        }
+        diffEq(assumePoints[], tmpPoints[], 0.5);
+        foreach (i; 0 .. points[].length) // 3rd
+        {
+            rkPoints[i] += tmpPoints[i] * 1.0/3.0;
+            assumePoints[i] = points[i] + tmpPoints[i] * 1.0;
+        }
+        diffEq(assumePoints[], tmpPoints[], 1.0);
+        foreach (i; 0 .. points[].length) // 4th
+        {
+            rkPoints[i] += tmpPoints[i] * 1.0/6.0;
+        }
+        points[] += rkPoints[];
 
         file = File(format!"trees/%08s.svg"(t++), "w");
         writer = file.lockingTextWriter;
         writer.writeSVGHeader;
         foreach (i, ref p; points)
         {
-            writer.writeDot(i, p, i < 500 ? Colors.orange : Colors.blue);
+            writer.writeDot(i, p, 5.0);
         }
         writer.writeSVGFooter;
         file.close;
@@ -209,24 +221,51 @@ void writeSVGHeader(W)(W w)
       <rect x="-1000" y="-1000" width="200%%" height="200%%" fill="white"/>`;
 }
 
-enum Colors
+int force(Colors a, Colors o)
 {
-    blue = "#0078ff",
-    gray = "#424242",
-    orange = "#fd6600"
+    if (a == o)
+        return -1;
+    with (Colors)
+    {
+        if (a == blue && (o == orange || o == green))
+        {
+            return 1;
+        }
+        if (a == orange && (o == purple || o == blue))
+        {
+            return 1;
+        }
+        if (a == purple && (o == green || o == orange))
+        {
+            return 1;
+        }
+        if (a == green && (o == blue || o == purple))
+        {
+            return 1;
+        }
+    }
+    return 0;
 }
 
-void writeDot(W)(W w, size_t id, Point point, Colors color)
+enum Colors : string
+{
+    blue = "#0078ff",
+    orange = "#fd6600",
+    purple = "#9d00ff",
+    green = "#99ff00"
+}
+
+void writeDot(W)(W w, size_t id, Point point, double radius)
 {
     import std.format;
 
     w.formattedWrite!`
     <circle
-    r="3.0"
+    r="%s"
     cy="%s"
     cx="%s"
     id="path%s"
-    style="opacity:1;fill:%(%c%);fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.0;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers fill stroke" />`(point.position.x/(cast(double)(int.max/1000)), point.position.y/(cast(double)(int.max/1000)), id, color);
+    style="opacity:1;fill:%(%c%);fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.0;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers fill stroke" />`(radius, point.position.x/(cast(double)(int.max/1000)), point.position.y/(cast(double)(int.max/1000)), id, point.polarity);
 }
 
 void writeSVGFooter(W)(W w)

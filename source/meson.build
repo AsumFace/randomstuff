@@ -22,6 +22,8 @@ abb_sources = [
     'typecons.d',
     #'sqbox.d',
     'rk.d',
+    'polygon.d',
+    'xxhash.d',
     abb_dcompute_sources]
 
 executable('abb',

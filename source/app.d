@@ -3,7 +3,7 @@
 |  - AsumFace (asumface@gmail.com) 2018 - 2019                 |
 |  Distributed under the Boost Software License, Version 1.0.  |
 |  See accompanying file LICENSE or copy at                    |
-|      https://www.boost.org/LICENSE_1_0.txt)                  |
+|      https://www.boost.org/LICENSE_1_0.txt                   |
 \+------------------------------------------------------------+/
 
 struct Point
@@ -68,7 +68,16 @@ void main()
     Point[] assumePoints = new Point[200];
     Point[] tmpPoints = new Point[200];
 
-    foreach (i, ref p; points)
+    import xxhash;
+
+    char[] da = "12345678123456781234567812345678e".dup;
+
+    writefln!"%16x"(xxHash!64(*(cast(ubyte[]*)&da)));
+    da = "12345678".dup;
+
+    writefln!"%16x"(xxHash!64(*(cast(ubyte[]*)&da)));
+
+    /+foreach (i, ref p; points)
     {
         import std.complex;
         final switch (i % 4)
@@ -182,7 +191,7 @@ void main()
         }
         writer.writeSVGFooter;
         file.close;
-    }
+    }+/
 }
 
 void writeSVGHeader(W)(W w)

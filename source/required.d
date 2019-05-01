@@ -6,6 +6,7 @@ version(LDC)
 
     void require(bool cond, const(char)[] a...) @nogc pure nothrow
     {
+        pragma(LDC_never_inline);
         if (!cond)
         {
             version(assert)

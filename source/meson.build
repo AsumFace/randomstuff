@@ -24,6 +24,7 @@ abb_sources = [
     'rk.d',
     'polygon.d',
     'xxhash.d',
+    'word.d',
     abb_dcompute_sources]
 
 executable('abb',

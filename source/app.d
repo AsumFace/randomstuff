@@ -60,23 +60,41 @@ void main()
     gen.seed(0);
     //finn;
 
-    dirEntries("trees/", SpanMode.shallow, false).each!(std.file.remove);
+    /+dirEntries("trees/", SpanMode.shallow, false).each!(std.file.remove);
 
 
     Point[] points = new Point[200];
     Point[] rkPoints = new Point[200];
     Point[] assumePoints = new Point[200];
     Point[] tmpPoints = new Point[200];
-
++/
     import xxhash;
-
-    char[] da = "12345678123456781234567812345678e".dup;
-
-    writefln!"%16x"(xxHash!64(*(cast(ubyte[]*)&da)));
-    da = "12345678".dup;
-
-    writefln!"%16x"(xxHash!64(*(cast(ubyte[]*)&da)));
-
+    /+auto rnd = Xorshift(546);
+    ubyte[] data = new ubyte[1024L*100];
+    foreach (i, ref b; data[])
+    {
+        b = uniform!ubyte(rnd);
+        if (i % 100_000_000 == 0)
+            writeln(i);
+    }
+    writefln!"hashing start";
+    auto start = MonoTime.currTime;
+    foreach (i; 0 .. 100_000)
+    {
+        uint h32 = xxHash!32(data);
+        data[0] += cast(ubyte)h32;
+    }
+    auto checkpoint = MonoTime.currTime;
+    writefln!"%s"((checkpoint - start).total!"nsecs");
+    checkpoint = MonoTime.currTime;
+    foreach (i; 0 .. 100_000)
+    {
+        ulong h64 = xxHash!64(data);
+        data[0] += cast(ubyte)h64;
+    }
+    auto end = MonoTime.currTime;
+    writefln!"%s"((end - checkpoint).total!"nsecs");
++/
     /+foreach (i, ref p; points)
     {
         import std.complex;

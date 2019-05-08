@@ -4,9 +4,8 @@ version(LDC)
 {
     import ldc.llvmasm;
 
-    void require(bool cond, const(char)[] a...) @nogc pure nothrow
+    void require(bool cond, const(char)[] a...) @nogc pure nothrow @safe
     {
-        pragma(LDC_never_inline);
         if (!cond)
         {
             version(assert)
@@ -19,7 +18,7 @@ version(LDC)
 else version(GNU)
 {
     import gcc.builtins;
-    void require(bool cond, const(char)[] a...) @nogc pure nothrow
+    void require(bool cond, const(char)[] a...) @nogc pure nothrow @safe
     {
         if (!cond)
         {
@@ -32,7 +31,7 @@ else version(GNU)
 }
 else
 {
-    void require(bool cond, const(char)[] a...) @nogc pure nothrow
+    void require(bool cond, const(char)[] a...) @nogc pure nothrow @safe
     {
         if (!cond)
             assert(0, a);

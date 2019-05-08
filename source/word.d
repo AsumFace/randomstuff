@@ -12,7 +12,7 @@ import required;
 import std.meta : AliasSeq;
 import std.traits;
 
-private uint ceilLog2(ulong num)
+private uint ceilLog2(ulong num) pure @safe
 {
     require(num != 0);
     ulong n = 0b1; // set LSb
@@ -37,7 +37,7 @@ private template bitsNeeded(ulong num)
 
 private alias StoreTypes = AliasSeq!(ubyte, ushort, uint, ulong); // shall be sorted short to large!
 
-private ulong ceilDiv(ulong a, ulong b)
+private ulong ceilDiv(ulong a, ulong b) pure @safe
 {
     ulong result = a / b;
     if (a % b != 0)
@@ -46,7 +46,7 @@ private ulong ceilDiv(ulong a, ulong b)
 }
 
 
-private T fillBits(T)(uint num)
+private T fillBits(T)(uint num) pure @safe
 {
     T result;
     foreach (i; 0 .. num)
@@ -56,7 +56,7 @@ private T fillBits(T)(uint num)
     return result;
 }
 
-ulong bitMask(uint num, uint shift)
+ulong bitMask(uint num, uint shift) pure @safe
 {
     require((num + shift) <= (ulong.sizeof * 8));
     return fillBits!ulong(num) << shift;
@@ -77,7 +77,7 @@ template bitMask(uint num, uint shift)
 
 struct WrappingDigit(ulong B = 1)
 {
-
+    @safe:
     enum max = B;
     enum min = 0uL;
     static if (B == 0)
@@ -189,9 +189,10 @@ struct WrappingDigit(ulong B = 1)
     }
 }
 
-struct Word(ulong N, ulong B = 2)
+struct Word(ulong N, ulong B = 1)
     if (B != 0)
 {
+    @safe:
     private:
     static if (B == 0)
         ubyte[0] store;

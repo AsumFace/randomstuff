@@ -119,14 +119,11 @@ private Unqual!(ElementType!T)[] iterativeMerging(T, UA, TA)(ref UA userAllocato
     tmp.multiSort!(lengthPred, valuePred);
 
     Overlap!T bestWorth;
-    import std.stdio;
-    writeln(tmp[]);
     while (true)
     {
         bestWorth = findBestPair(tmp[]); // find two sequences to merge
         if (bestWorth.worth == 0)
             break;
-        writefln!"chosen to merge %s and %s"(bestWorth.a, bestWorth.b);
         with (bestWorth)
         {
             Unqual!(ElementType!T)[] mergedSequence =
@@ -140,7 +137,6 @@ private Unqual!(ElementType!T)[] iterativeMerging(T, UA, TA)(ref UA userAllocato
                 auto rem = a[].copy(mergedSequence[]);
                 rem = b[].drop(a[bOffset .. $].length).copy(rem);
                 require(rem.empty);
-                writefln!"merged to %s"(mergedSequence);
             }
             {
                 size_t aLoc =
@@ -177,7 +173,6 @@ private Unqual!(ElementType!T)[] iterativeMerging(T, UA, TA)(ref UA userAllocato
             if (tmpAllocator.owns(cast(Unqual!(ElementType!T)[])b[]) == Ternary.yes)
                 dispose(tmpAllocator, cast(Unqual!(ElementType!T)[])b[]);
         }
-        writeln(tmp[]);
     }
     require(!tmp[].empty);
     // concat all remaining sequences using user-provided-allocator allocated buffer, ideally that's just one sequence

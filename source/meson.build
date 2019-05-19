@@ -26,6 +26,9 @@ abb_sources = [
     'xxhash.d',
     'word.d',
     'fnv.d',
+    'supersequence.d',
+    'morse.d',
+    'arbint.d',
     abb_dcompute_sources]
 
 executable('abb',

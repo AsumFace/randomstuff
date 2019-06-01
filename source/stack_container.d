@@ -14,12 +14,15 @@ class AllocationFailure : Exception
     mixin basicExceptionCtors;
 }
 
-FallbackAllocator!(AllocatorList!((n => BitmappedBlock!(1024,
+/+FallbackAllocator!(AllocatorList!((n => BitmappedBlock!(1024,
                                                      platformAlignment,
                                                      Mallocator,
                                                      Yes.multiblock)(1_024_000)),
                                   Mallocator),
                                   Mallocator) stackAllocator;
++/
+
+alias stackAllocator = Mallocator.instance;
 
 /**
 A loosely stack-like data structure using manual memory management.
@@ -160,7 +163,9 @@ struct Stack(T)
             {
                 import std.algorithm.comparison : max;
                 // TODO: try regular allocation if expansion fails
-                enforce(expandArray(stackAllocator, entryStore, max(entryStore.length, 8)),
+                import std.stdio;
+                //stderr.writefln!"%s %s"(entryStore, entries);
+                enforce(expandArray(stackAllocator, entryStore, max(entryStore.length * 2, 8)),
                         new AllocationFailure("Stack expansion failed due to allocation failure"));
             }
         }

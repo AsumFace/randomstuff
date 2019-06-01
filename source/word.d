@@ -77,6 +77,7 @@ template bitMask(uint num, uint shift)
 
 struct WrappingDigit(ulong B = 1)
 {
+    import std.math : truncPow2;
     @safe:
     enum max = B;
     enum min = 0uL;
@@ -92,6 +93,18 @@ struct WrappingDigit(ulong B = 1)
     }
     private StoreType store;
 
+    auto asInt()
+    {
+        return store;
+    }
+
+    typeof(this) opBinary(string op)(const(Unqual!(typeof(this))) rhs)
+    {
+        Unqual!(typeof(this)) result = this;
+        result.opBinaryAssign!op(rhs);
+        return result;
+    }
+
     ref typeof(this) opBinaryAssign(string op, T)(T rhs)
         if (isIntegral!T)
     {
@@ -99,7 +112,7 @@ struct WrappingDigit(ulong B = 1)
         return opBinaryAssign!op(tmp);
     }
 
-    ref typeof(this) opBinaryAssign(string op)(const(typeof(this)) rhs)
+    ref typeof(this) opBinaryAssign(string op)(const(Unqual!(typeof(this))) rhs)
         if (B == 1 && (op == "&" || op == "|")
             || op == "+" || op == "-")
     {
@@ -141,7 +154,7 @@ struct WrappingDigit(ulong B = 1)
     {
         static if (isIntegral!T)
         {
-            require(rhs <= B);
+            require(rhs <= B, "assignment of greater value than B");
             store = cast(StoreType)rhs;
         }
         else
@@ -162,12 +175,12 @@ struct WrappingDigit(ulong B = 1)
     typeof(this) opUnary(string op)() const
         if (op == "+" || op == "-" || op == "~" && B == 1)
     {
-        typeof(this) result = this;
+        Unqual!(typeof(this)) result = this;
         static if (op == "+")
             return result;
         static if (B == 1 && op == "~" || op == "-")
         {
-            result.store = B - store;
+            result.store = cast(typeof(store))(B - store);
             return result;
         }
     }
@@ -214,6 +227,21 @@ struct Word(ulong N, ulong B = 1)
         alias DigitType = WrappingDigit!B;
 
         public:
+
+        this(T)(T arg)
+            if (N == 1)
+        {
+            this.opIndexAssign(arg, 0);
+        }
+
+        static if (N == 1)
+        {
+            DigitType opAssign(T)(T value)
+                if (isIntegral!T)
+            {
+                return opIndexAssign!T(value, 0);
+            }
+        }
 
         DigitType opIndex(ulong idx) const
         {
@@ -273,30 +301,33 @@ struct Word(ulong N, ulong B = 1)
             if (B == 1 && (op == "&" || op == "|")
                 || op == "+" || op == "-")
         {
-            typeof(this) result = this;
+            Unqual!(typeof(this)) result = this;
             mixin("result " ~ op ~ "= rhs;");
             return result;
         }
 
         typeof(this) opUnary(string op)() const
+            if (B == 1)
         {
-            static if (op == "~" || op == "-")
+            Unqual!(typeof(this)) result = this;
+            static if (op == "~")
             {
                 import std.math : truncPow2;
-                static if (truncPow(B + 1) == (B + 1)) // we can exploit the internal representation
+                //static if (truncPow2(B + 1) == (B + 1)) // we can exploit the internal representation
                 {
-                    foreach (ref s; store[])
-                        s = ~s; // simply invert all bits, including padding
+                //    foreach (ref s; result.store[])
+                //        s = ~s; // simply invert all bits, including padding
                 }
-                else
+                //else
                 {
                     foreach (i; 0 .. N)
-                        this[i] = -this[i];
-                }
+                        result[i] = ~result[i];
+                }            
             }
+            return result;
         }
     }
-    void toString(W)(W w)
+    void toString(W)(W w) const
     {
         import std.format;
         w.formattedWrite!"[";

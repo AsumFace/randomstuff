@@ -111,8 +111,12 @@ struct ArbInt(uint bits, bool signed = false)
             {
                 Unqual!(typeof(this)) result = this;
                 result >>= rhs;
-                result &= ~(typeof(this)(1) << typeof(this)(bits - 1));
-                return result;
+                if (rhs == typeof(this)(0))
+                    return this;
+                else
+                    result = ~(typeof(this)(1) << typeof(this)(bits - 1)) >> rhs - typeof(this)(1);
+                this = result;
+                return this;
             }
             else
             {
@@ -133,7 +137,10 @@ struct ArbInt(uint bits, bool signed = false)
                     tmp <<= i * StoreType.sizeof * 8;
                     irhs |= tmp;
                 }
-                mixin("ilhs " ~ op ~ "= irhs;");
+                static if (op == "<<" || op == ">>")
+                    mixin("ilhs = ilhs " ~ op ~ " irhs.toLong;");
+                else
+                    mixin("ilhs = ilhs " ~ op ~ " irhs;");
                 foreach (i, ref a; store[])
                 {
                     BigInt tmp;
@@ -150,11 +157,6 @@ struct ArbInt(uint bits, bool signed = false)
         }
         return this;
     }
-
-    /+typeof(this) opBinaryRight(string op)(const(typeof(this)) rhs)
-    {
-        return rhs.opBinary!op(this);
-    }+/
 
     typeof(this) opBinary(string op)(const(typeof(this)) rhs) const
     {
@@ -320,6 +322,7 @@ struct ArbInt(uint bits, bool signed = false)
             }
             return 0;
         }
+        assert(0);
     }
 
     bool opEquals(const(typeof(this)) rhs) const
@@ -355,10 +358,11 @@ struct ArbInt(uint bits, bool signed = false)
             }
             return true;
         }
+        assert(0);
     }
 
     T opCast(T)() const
-        if (isIntegral!T || isInstanceOf!(ArbInt, T))
+        if (isIntegral!T || isInstanceOf!(TemplateOf!(typeof(this)), T))
     {
         if (!__ctfe && intrinsics)
         {
@@ -383,7 +387,7 @@ struct ArbInt(uint bits, bool signed = false)
                     enum tbits = T.sizeof * 8;
                     auto tstore = &result;
                 }
-                else static if (isInstanceOf!(ArbInt, T))
+                else static if (isInstanceOf!(TemplateOf!(typeof(this)), T))
                 {
                     enum tbits = TemplateArgsOf!T[0];
                     auto tstore = result.store[].ptr;
@@ -392,16 +396,18 @@ struct ArbInt(uint bits, bool signed = false)
                 static if (tbits > bits)
                     __ir!(format!"
                     %%cast0 = bitcast i8* %%0 to i%1$s*
+                    %%cast1 = bitcast i8* %%1 to i%2$s*
                     %%val0 = load i%1$s, i%1$s* %%cast0
                     %%a = %3$sext i%1$s %%val0 to i%2$s
-                    store i%2$s %%a, i%2$s* %%1
+                    store i%2$s %%a, i%2$s* %%cast1
                     "(bits, tbits, sgn), void, const(void*), void*)(store.ptr, tstore);
                 else static if (tbits < bits)
                     __ir!(format!"
                     %%cast0 = bitcast i8* %%0 to i%1$s*
+                    %%cast1 = bitcast i8* %%1 to i%2$s*
                     %%val0 = load i%1$s, i%1$s* %%cast0
                     %%a = trunc i%1$s %%val0 to i%2$s
-                    store i%2$s %%a, i%2$s* %%1
+                    store i%2$s %%a, i%2$s* %%cast1
                     "(bits, tbits), void, const(void*), void*)(store.ptr, tstore);
                 else static if (tbits == bits)
                     __ir!(format!"
@@ -417,13 +423,14 @@ struct ArbInt(uint bits, bool signed = false)
         {
             static if (isIntegral!T)
                 return cast(T)store[0];
-            else static if (isInstanceOf!(ArbInt, T))
+            else static if (isInstanceOf!(TemplateOf!(typeof(this)), T))
             {
+                import std.range : lockstep;
                 T result;
                 foreach (i, ref a, b; lockstep(result.store[], store[]))
                 {
-                    a = b;
-                    static if (result.store[].length < store[].length)
+                    a = cast(ElementType!(typeof(result.store[])))b;
+                    static if (result.store.length < store.length)
                     {
                         if (i == result.store[].length - 1)
                             a &= lastMask;
@@ -432,6 +439,7 @@ struct ArbInt(uint bits, bool signed = false)
                 return result;
             }
         }
+        assert(0);
     }
 
     this(T)(T arg)
@@ -557,7 +565,34 @@ struct ArbInt(uint bits, bool signed = false)
 }
 unittest
 {
-    assert(ArbInt!8("256") == ArbInt!8(0));
+    /+assert(ArbInt!8("256") == ArbInt!8(0));
     assert(ArbInt!8(256) == ArbInt!8("512"));
     assert(ArbInt!9(256) + ArbInt!9(1) == ArbInt!9(257));
+
+    static foreach (i; 1 .. 5)
+    {{
+        enum w = 9 ^^ i;
+        enum a = ArbInt!w(3) * ArbInt!w(4);
+        auto b = ArbInt!w(4) * ArbInt!w(3);
+        assert(a == b);
+        assert(a == ArbInt!w(12));
+
+        enum c = ArbInt!(w, true)(3) * ArbInt!(w, true)(4);
+        auto d = ArbInt!(w, true)(4) * ArbInt!(w, true)(3);
+        assert(c == d);
+        assert(c == ArbInt!(w, true)(12));
+    }}
+    static foreach (i; 1 .. 3)
+    {{
+        enum w = 9 ^^ i;
+
+        enum a = ArbInt!(w, true)("255")
+            * ArbInt!(w, true)("254");
+        auto b = ArbInt!(w, true)("254")
+            * ArbInt!(w, true)("255");
+        import std.stdio;
+        writeln(a);
+        writeln(b);
+        assert(a == b);
+    }}+/
 }

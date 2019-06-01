@@ -6,6 +6,8 @@
 |      https://www.boost.org/LICENSE_1_0.txt                   |
 \+------------------------------------------------------------+/
 
+pragma(msg, __VERSION__);
+
 struct Point
 {
     import cgfm.math;
@@ -58,158 +60,24 @@ void main()
     import std.range;
     Mt19937 gen;
     gen.seed(0);
-    //finn;
 
-    /+dirEntries("trees/", SpanMode.shallow, false).each!(std.file.remove);
-
-
-    Point[] points = new Point[200];
-    Point[] rkPoints = new Point[200];
-    Point[] assumePoints = new Point[200];
-    Point[] tmpPoints = new Point[200];
-+/
-    import xxhash;
-    /+auto rnd = Xorshift(546);
-    ubyte[] data = new ubyte[1024L*100];
-    foreach (i, ref b; data[])
+    enum Values : byte // values chosen to match ASCII as well as possible
     {
-        b = uniform!ubyte(rnd);
-        if (i % 100_000_000 == 0)
-            writeln(i);
-    }
-    writefln!"hashing start";
-    auto start = MonoTime.currTime;
-    foreach (i; 0 .. 100_000)
-    {
-        uint h32 = xxHash!32(data);
-        data[0] += cast(ubyte)h32;
-    }
-    auto checkpoint = MonoTime.currTime;
-    writefln!"%s"((checkpoint - start).total!"nsecs");
-    checkpoint = MonoTime.currTime;
-    foreach (i; 0 .. 100_000)
-    {
-        ulong h64 = xxHash!64(data);
-        data[0] += cast(ubyte)h64;
-    }
-    auto end = MonoTime.currTime;
-    writefln!"%s"((end - checkpoint).total!"nsecs");
-+/
-    /+foreach (i, ref p; points)
-    {
-        import std.complex;
-        final switch (i % 4)
-        {
-        case 0:
-            p.polarity = Colors.orange;
-            break;
-        case 1:
-            p.polarity = Colors.blue;
-            break;
-        case 2:
-            p.polarity = Colors.purple;
-            break;
-        case 3:
-            p.polarity = Colors.green;
-            break;
-        }
-        p.position = vec2l(uniform!int(gen), uniform!int(gen));
-        p.momentum = vec2d(0, 0);
+        A = 65,
+        B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,
+        n0 = 48,
+        n1,n2,n3,n4,n5,n6,n7,n8,n9,
+        dot = 46, comma = 44, colon = 58, semicolon = 59, question = 63, minus = 45, underscore = 95,
+        parensOpen = 40, parensClose = 41, apostrope = 39, equals = 61, plus = 43, slash = 47, at = 64,
+        ampersand = 38, dollar = 36, quote = 34, exclamation = 33, end = 4, error = 24, invite = 5,
+        newPage = 12, ack = 6, wait = 19, space = 32, SOS = -1
     }
 
-    import rk;
+    import fnv;
 
-    ulong t = 0;
+    Values[][32] keys;
+    ubyte[32] iTable;
 
-    File file = File(format!"trees/%08s.svg"(t++), "w");
-    auto writer = file.lockingTextWriter;
-    writer.writeSVGHeader;
-    foreach (i, ref p; points)
-    {
-        writer.writeDot(i, p, 5.0);
-    }
-    writer.writeSVGFooter;
-    file.close;
-
-    import std.parallelism;
-    void diffEq(const(Point[]) input, Point[] output, const(double) t)
-    {
-        foreach (i; iota(0, input.length).parallel(12))
-        {
-
-            //writeln(input[i].momentum);
-            output[i].position = vec2l(0,0);
-            output[i].momentum = vec2f(0,0);
-            output[i].position = cast(vec2l)(input[i].momentum * t) * 5;
-
-            foreach (ii; 0 .. input.length)
-            {
-                if (input[i].position == input[ii].position)
-                    continue;
-                auto relLocL = input[ii].position - input[i].position;
-                auto relLocD = cast(vec2d)(relLocL);
-                output[i].polarity = input[i].polarity;
-
-                if (relLocD.squaredMagnitude < (20e6^^2.0))
-                {
-                    output[i].momentum -= relLocD.normalized * 2.5e-8 * (20e6^^2 - relLocD.squaredMagnitude);
-                }
-                else if (force(input[i].polarity, input[ii].polarity) == 1) // attraction
-                {
-                    output[i].momentum +=
-                        relLocD.normalized * 31e19 / max(relLocD.squaredMagnitude, 1e15);
-                }
-                else if (force(input[i].polarity, input[ii].polarity) == -1) // repulsion
-                {
-                    output[i].polarity = input[i].polarity;
-                    output[i].momentum -=
-                        relLocD.normalized * 60e19 / max(relLocD.squaredMagnitude, 1e15);
-                }
-            }
-            output[i].momentum -= input[i].momentum * 0.05;
-        }
-    }
-
-    while (t < 20000)
-    {
-        writeln(t);
-
-        assumePoints[] = points[];
-        diffEq(assumePoints[], tmpPoints[], 0.0);
-        foreach (i; 0 .. points[].length) // 1st
-        {
-            rkPoints[i] = tmpPoints[i] * 1.0/6.0;
-            assumePoints[i] = points[i] + tmpPoints[i] * 0.5;
-        }
-        diffEq(assumePoints[], tmpPoints[], 0.5);
-        foreach (i; 0 .. points[].length) // 2nd
-        {
-            rkPoints[i] += tmpPoints[i] * 1.0/3.0;
-            assumePoints[i] = points[i] + tmpPoints[i] * 0.5;
-        }
-        diffEq(assumePoints[], tmpPoints[], 0.5);
-        foreach (i; 0 .. points[].length) // 3rd
-        {
-            rkPoints[i] += tmpPoints[i] * 1.0/3.0;
-            assumePoints[i] = points[i] + tmpPoints[i] * 1.0;
-        }
-        diffEq(assumePoints[], tmpPoints[], 1.0);
-        foreach (i; 0 .. points[].length) // 4th
-        {
-            rkPoints[i] += tmpPoints[i] * 1.0/6.0;
-        }
-        points[] += rkPoints[];
-
-        file = File(format!"trees/%08s.svg"(t++), "w");
-        writer = file.lockingTextWriter;
-        writer.writeSVGHeader;
-        foreach (i, ref p; points)
-        {
-            writer.writeDot(i, p, 5.0);
-        }
-        writer.writeSVGFooter;
-        file.close;
-    }+/
 }
 
 void writeSVGHeader(W)(W w)

@@ -3,13 +3,14 @@ project('dtower', 'd')
 dtower_sources = [
   'dependencies/arsd/bmp.d',
   'dependencies/arsd/color.d',
+  'dependencies/arsd/dds.d',
   'dependencies/arsd/image.d',
   'dependencies/arsd/jpeg.d',
   'dependencies/arsd/nanovega.d',
-  'dependencies/arsd/png.d',
-  'dependencies/arsd/targa.d',
-  'dependencies/arsd/dds.d',
   'dependencies/arsd/pcx.d',
+  'dependencies/arsd/png.d',
+  'dependencies/arsd/simpledisplay.d',
+  'dependencies/arsd/targa.d',
   'dependencies/bindbc-freetype/source/bindbc/freetype/bind/freetype.d',
   'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftadvanc.d',
   'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftbbox.d',
@@ -106,8 +107,15 @@ dtower_sources = [
   'dependencies/bindbc-opengl/source/bindbc/opengl/gl.d',
   'dependencies/bindbc-opengl/source/bindbc/opengl/package.d',
   'dependencies/bindbc-opengl/source/bindbc/opengl/util.d',
-  'source/main.d',
-    'dependencies/arsd/simpledisplay.d'
+  'source/cgfm/math/box.d',
+  'source/cgfm/math/funcs.d',
+  'source/cgfm/math/matrix.d',
+  'source/cgfm/math/package.d',
+  'source/cgfm/math/quaternion.d',
+  'source/cgfm/math/shapes.d',
+  'source/cgfm/math/simplerng.d',
+  'source/cgfm/math/vector.d',
+  'source/main.d'
 ]
 
 inc_dirs = [

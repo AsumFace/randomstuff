@@ -3,7 +3,6 @@ module required;
 version(LDC)
 {
     import ldc.llvmasm;
-
     void require()(bool cond, const(char)[] a...) @nogc pure nothrow @safe
     {
         if (!cond)

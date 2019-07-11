@@ -66,8 +66,10 @@ void main()
 
     Button!(false) a;
     ZoomableMap b;
+    b.bg = createImage(nvg, "/tmp/test.png", NVGImageFlag.GenerateMipmaps, NVGImageFlag.NoFiltering);
     keyDelegate = &(b.key);
     scrollDelegate = &(b.scroll);
+
     Button!(false) c;
     SidebarFrame!(a, b, c) mainFrame;
     mainFrame.width = width;
@@ -75,6 +77,11 @@ void main()
     mainFrame.resetLayout;
     mainFrame.x0 = 0;
     mainFrame.y0 = 0;
+
+    b.tScale = 20;
+    b.tPos = vec2f(b.width*b.tScale/2, b.height*b.tScale/2.0);
+    b.scaleTime = 1.0;
+    b.posTime = 1.0;
 //    mainFrame.rcut = 300;
 //    mainFrame.lcut = 100;
     bool currDragging = false;
@@ -266,7 +273,7 @@ struct Button(bool toggle)
         return Draggable(null);
     }
 
-    void draw(T)(T nvg)
+    void draw(NVGContext nvg)
     {
         NVGColor fillColor;
         if (activated)
@@ -297,8 +304,8 @@ struct Button(bool toggle)
     invariant
     {
         //stderr.writefln!"Button: x0 %s; y0 %s; width %s; height %s;"(_x0, _y0, _width, _height);
-        require(_width >= 0);
-        require(_height >= 0);
+        assert(_width >= 0);
+        assert(_height >= 0);
     }
 }
 
@@ -394,10 +401,10 @@ struct SidebarFrame(alias lwidget, alias cwidget, alias rwidget)
     invariant
     {
         //stderr.writefln!"SiderBarFrame: x0 %s; y0 %s; width %s; height %s;"(_x0, _y0, _width, _height);
-        require(lwidget.width <= _width);
-        require(cwidget.width <= _width);
-        require(rwidget.width <= _width);
-        require(lwidget.width + cwidget.width + rwidget.width <= _width);
+        assert(lwidget.width <= _width);
+        assert(cwidget.width <= _width);
+        assert(rwidget.width <= _width);
+        assert(lwidget.width + cwidget.width + rwidget.width <= _width);
      //        format!"%s+%s+%s=%s>%s"(lwidget.width, cwidget.width, rwidget.width, lwidget.width + cwidget.width + rwidget.width, width));
     }
 
@@ -667,6 +674,8 @@ struct ZoomableMap
 //return        tScale * (1 -scaleTime) + sScale * scaleTime;
     }
 
+    NVGImage bg;
+
     private vec2f currPos()
     {
 //        return vec2f(0,0);
@@ -686,8 +695,8 @@ struct ZoomableMap
 
     }
 
-    void draw(T)(T nvg)
-    {import std.format;
+    void draw(NVGContext nvg)
+    {
         NVGMatrix rest = nvg.currTransform;
         NVGMatrix mat = NVGMatrix().identity;
         mat = mat.translate(/+-width/2.0 + +/currPos.x,/+ -height/2.0 ++/ currPos.y);
@@ -696,17 +705,12 @@ struct ZoomableMap
 
         nvg.currTransform(mat);
         nvg.beginPath(); // start new path
-        nvg.roundedRect(
-            0+width/2.0f,
-            0+height/2.0f,
-            200,
-            150,
-            8);
-        nvg.fillPaint = nvg.linearGradient(width/2, height/2, width*3/4, height*3/4, NVGColor("#f70"), NVGColor.green);
+        nvg.rect(-8192/2, -8192/2, 8192, 8192);
+        nvg.fillPaint = nvg.imagePattern(-8192/2, -8192/2, 8192, 8192, 0, bg);
         nvg.fill();
-        nvg.strokeColor = NVGColor.white;
-        nvg.strokeWidth = 2;
-        nvg.stroke();
+        //nvg.strokeColor = NVGColor.white;
+        //nvg.strokeWidth = 2;
+        //nvg.stroke();
         nvg.currTransform(rest);
     }
 

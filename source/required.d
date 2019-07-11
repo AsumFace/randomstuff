@@ -19,6 +19,18 @@ version(LDC)
             }
         }
     }
+
+    void unreachable()() @nogc pure nothrow @safe
+    {
+        version(assert)
+        {
+            assert(0, "unreachable code hit!");
+        }
+        else
+        {
+            int _ = __ir_pure!("unreachable", int)(0);
+        }
+    }
 }
 else version(GNU)
 {
@@ -33,6 +45,17 @@ else version(GNU)
                 __builtin_unreachable;
         }
     }
+    void unreachable()() @nogc pure nothrow @safe
+    {
+        version(assert)
+        {
+            assert(0, "unreachable code hit!");
+        }
+        else
+        {
+            __builtin_unreachable;
+        }
+    }
 }
 else
 {
@@ -40,5 +63,14 @@ else
     {
         if (!cond)
             assert(0, a);
+    }
+    void unreachable()() @nogc pure nothrow @safe
+    {
+        version(assert)
+        {
+            assert(0, "unreachable code hit!");
+        }
+        else
+        {}
     }
 }

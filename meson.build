@@ -1,6 +1,6 @@
-project('dtower', 'd')
+project('behold', 'd')
 
-dtower_sources = [
+behold_sources = [
   'dependencies/arsd/bmp.d',
   'dependencies/arsd/color.d',
   'dependencies/arsd/dds.d',
@@ -115,7 +115,10 @@ dtower_sources = [
   'source/cgfm/math/shapes.d',
   'source/cgfm/math/simplerng.d',
   'source/cgfm/math/vector.d',
-  'source/main.d'
+  'source/main.d',
+  'source/sedectree.d',
+  'source/word.d',
+  'source/zstdc.d'
 ]
 
 inc_dirs = [
@@ -145,9 +148,11 @@ gl_dep = dependency('gl')
 fontconfig_dep = dependency('fontconfig')
 x11_dep = dependency('x11')
 xext_dep = dependency('xext')
+zstd_dep = dependency('libzstd')
 
-executable('dtower',
-    dtower_sources,
+
+executable('behold',
+    behold_sources,
     include_directories : inc_dirs,
     d_module_versions : d_versions,
-    dependencies : [glfw_dep, freetype_dep, gl_dep, fontconfig_dep, x11_dep, xext_dep])
+    dependencies : [glfw_dep, freetype_dep, gl_dep, fontconfig_dep, x11_dep, xext_dep, zstd_dep])

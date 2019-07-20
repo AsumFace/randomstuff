@@ -148,7 +148,7 @@ gl_dep = dependency('gl')
 fontconfig_dep = dependency('fontconfig')
 x11_dep = dependency('x11')
 xext_dep = dependency('xext')
-zstd_dep = dependency('libzstd')
+zstd_dep = dependency('libzstd', static : true)
 
 
 executable('behold',
@@ -156,3 +156,4 @@ executable('behold',
     include_directories : inc_dirs,
     d_module_versions : d_versions,
     dependencies : [glfw_dep, freetype_dep, gl_dep, fontconfig_dep, x11_dep, xext_dep, zstd_dep])
+#    objects: ['/opt/ldc2-1.15/lib64/libphobos2-ldc.a', '/opt/ldc2-1.15/lib64/libdruntime-ldc.a'])

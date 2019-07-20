@@ -14,7 +14,7 @@ import std.traits;
 
 private uint ceilLog2(ulong num) pure @safe
 {
-    require(num != 0);
+    assert(num != 0);
     ulong n = 0b1; // set LSb
     uint bitCount;
     while (n < num && n != 0) // shift bit one over until the mininimum neccessary to represent base num is found
@@ -58,7 +58,7 @@ private T fillBits(T)(uint num) pure @safe
 
 ulong bitMask(uint num, uint shift) pure @safe
 {
-    require((num + shift) <= (ulong.sizeof * 8));
+    assert((num + shift) <= (ulong.sizeof * 8));
     return fillBits!ulong(num) << shift;
 }
 
@@ -154,7 +154,7 @@ struct WrappingDigit(ulong B = 1)
     {
         static if (isIntegral!T)
         {
-            require(rhs <= B, "assignment of greater value than B");
+            assert(rhs <= B, "assignment of greater value than B");
             store = cast(StoreType)rhs;
         }
         else
@@ -243,14 +243,51 @@ struct Word(ulong N, ulong B = 1)
             }
         }
 
+        auto opIndex() const
+        {
+            struct WordRange
+            {
+                private const(Word*) context;
+                private ulong i;
+
+                ulong front() const
+                {
+                    assert(!empty);
+                    return (*context)[i].asInt;
+                }
+
+                void popFront()
+                {
+                    assert(!empty);
+                    i += 1;
+                }
+
+                bool empty() const
+                {
+                    return i >= N;
+                }
+
+                this(const(Word)* context)
+                {
+                    this.context = context;
+                    i = 0;
+                }
+
+                invariant(context !is null);
+            }
+            return WordRange(&this);
+        }
+
         DigitType opIndex(ulong idx) const
         {
-            require(idx < N);
+            assert(idx < N);
             immutable segment = idx / digitsPerAlign;
             immutable subSegment = idx % digitsPerAlign;
 
-            DigitType result = (store[segment] >> (subSegment * bitsNeeded!B)) & bitMask!(bitsNeeded!B, 0);
-            return result;
+            ulong result1 = store[segment];
+            result1 >>= (subSegment * bitsNeeded!B);
+            result1 &= bitMask!(bitsNeeded!B, 0);
+            return DigitType(result1);
         }
 
         DigitType opIndexAssign(T)(T value, ulong idx)
@@ -260,8 +297,8 @@ struct Word(ulong N, ulong B = 1)
 
         DigitType opIndexAssign(DigitType value, ulong idx)
         {
-            require(value.store <= B);
-            require(idx < N);
+            assert(value.store <= B);
+            assert(idx < N);
             immutable segment = idx / digitsPerAlign;
             immutable subSegment = idx % digitsPerAlign;
 

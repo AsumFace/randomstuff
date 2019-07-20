@@ -8,16 +8,67 @@ import std.string;
 import required;
 import cgfm.math;
 
-immutable bool explode = false;
-
 void main()
 {
+    import sedectree;
+
+    auto tree = sedecTree!(uint, c => cast(bool)((c.x*c.y)%2));
+
+    Vector!(uint, 2)[] points = new Vector!(uint, 2)[10000];
+
+    foreach (ref e; points[])
+    {
+        e = Vector!(uint, 2)(uniform!uint, uniform!uint);
+    }
+
+    foreach (i; 0 .. 10000)
+    {
+        tree[points[i]] = uniform!int < 0;
+    }
+    foreach (i, p; points[])
+    {
+        writefln!"%s %s"(i, tree[p]);
+    }
+    ubyte[] written = tree.packNode(tree.root);
+
+
+
+    foreach (x; 0 .. 10)
+    {
+        foreach (y; 0 .. 10)
+        {
+            bool xv;
+            if (y < 5)
+                xv = true;
+            else
+                xv = false;
+            tree[x, y] = xv;
+        }
+    }
+
+    foreach (y; 0 .. 10)
+    {
+        foreach (x; 0 .. 10)
+        {
+            writef!"%b"(tree[x, y]);
+        }
+        writeln;
+    }
+
+
+
+    Thread.sleep(500.msecs);
+    sedecAllocator.reportStatistics(stderr);
+    Thread.sleep(10000.seconds);
+
+    if (true ? true : false)
+        assert(0, "end of program");
+
     import std.datetime;
     if (glfwInit == false)
         assert(0, "GLFW initialization failed");
     else
         writefln!"GLFW initialized!";
-
     //glfwSetErrorCallback(&error_callback);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
@@ -37,6 +88,7 @@ void main()
     glfwSetInputMode(window, GLFW_STICKY_MOUSE_BUTTONS, GLFW_TRUE);
     glfwSwapInterval(1);
     NVGContext nvg = nvgCreateContext();
+    loadOpenGL();
     scope(exit) nvg.kill;
 
     uint vbo;
@@ -95,6 +147,7 @@ void main()
         double xcur;
         double ycur;
         window.glfwGetCursorPos(&xcur, &ycur);
+        stderr.writefln!"cursor: %s"(vec2d(xcur, ycur));
         bool lmb = !!glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
 
         mainFrame.progress(1.seconds / 60);
@@ -138,6 +191,7 @@ void main()
             scope(exit) nvg.endFrame();
 
             mainFrame.draw(nvg);
+
 
             nvg.beginPath();
             nvg.roundedRect(xcur - 5, ycur - 5, 10, 10, 2);
@@ -290,6 +344,7 @@ struct Button(bool toggle)
             nvg.strokeColor = NVGColor.blue;
         nvg.strokeWidth = 2;
         nvg.stroke();
+
     }
 
     void end()
@@ -561,6 +616,8 @@ void delegate(GLFWwindow* window, int key, int scancode, int action, int mods) k
 extern(C) void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) nothrow
 {
     import std.exception;
+    if (key == 256)
+        assert(0);
     if (keyDelegate !is null)
         assumeWontThrow(keyDelegate(window, key, scancode, action, mods));
 }
@@ -704,13 +761,33 @@ struct ZoomableMap
         mat = mat.translate(x0/++width/2.0f+/, y0/++height/2.0f+/);
 
         nvg.currTransform(mat);
-        nvg.beginPath(); // start new path
-        nvg.rect(-8192/2, -8192/2, 8192, 8192);
-        nvg.fillPaint = nvg.imagePattern(-8192/2, -8192/2, 8192, 8192, 0, bg);
+
+        nvg.beginPath();
+        nvg.circle(0, 0, 100);
+        nvg.fillColor(NVGColor.red);
         nvg.fill();
-        //nvg.strokeColor = NVGColor.white;
-        //nvg.strokeWidth = 2;
-        //nvg.stroke();
+        nvg.clip(NVGClipMode.Replace);
+
+        nvg.beginPath();
+        nvg.circle(100, 0, 150);
+        nvg.fillColor(NVGColor.green);
+        nvg.fill();
+        nvg.clip();
+
+        nvg.beginPath();
+        nvg.circle(20, 0, 100);
+        nvg.fillColor(NVGColor.blue);
+        nvg.fill();
+
+/+        nvg.beginPath(); // start new path
+        nvg.roundedRect(-256/2, -256/2, 256, 256, 10);
+        nvg.fillPaint = nvg.imagePattern(-256/2, -256/2, 256, 256, 0, bg);
+        nvg.fill();
+
+        nvg.fill();
++/
+
+
         nvg.currTransform(rest);
     }
 

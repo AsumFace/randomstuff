@@ -288,6 +288,7 @@ struct SedecTree(AddressType, alias calc)
         int depth = 0;
         assert(root !is null);
         NodeType* activeNode = root;
+        assert(&*activeNode);
         Vector!(AddressType, 2) begin = AddressType.min;
         AddressType width = AddressType.max; // actual width is +1, a state with no width is not useful
         size_t stackOffset;
@@ -296,7 +297,7 @@ struct SedecTree(AddressType, alias calc)
             assert((width + 1).isPowerOf2 || width + 1 == 0); // width quartered with each step
             assert(width >= 3 && begin % 4 == 0); // smallest node covers 4x4 pixels, alignment given by nature
             auto subIdx = cast(Vector!(ubyte, 2))((Vector!(AddressType, 2)(i1, i2) - begin) / (width / 4 + 1));
-            //stderr.writefln("w%s d%s %s", width, depth, (*activeNode).toString);
+            stderr.writefln("w%s d%s %s", width, depth, (*activeNode).toString);
             assert(activeNode !is null);
             ChildTypes result = (*activeNode)[subIdx].type;
 
@@ -666,141 +667,91 @@ struct SedecTree(AddressType, alias calc)
     ubyte[] packNode(Flags...)(NodeType* node)
         if (allSatisfy!(isFlag, typeof(Flags)))
     {
-        import std.stdio;
-        import std.algorithm.mutation;
-        import std.algorithm.comparison;
         enum freeCopied = flagValue!(Flags)("freeCopied");
         assert(freeCopied != -1, "Please specify whether packNode should automatically free nodes!");
-        NodeType*[AddressType.sizeof * 8 / 2] stack;
-        ubyte[AddressType.sizeof * 8 / 2] idx;
-        ubyte depth = 0;
         ubyte[] dst = makeArray!ubyte(sedecAllocator, 1024);
-        ulong written = 0;
-
-
-
-        (*cast(ubyte[NodeType.sizeof]*)node)[].copy(dst[written .. $]);
-        written += NodeType.sizeof;
-        assert(written % 8 == 0);
-        //dst[0 .. written].printBuf;
-
-        stack[depth] = cast(NodeType*)&dst[0 .. ulong.sizeof][0];
-        debug auto _should = stack[depth];
-
-        with (ChildTypes) while (true)
-        {
-            assert(depth < stack.length);
-            if (idx[depth] == 16)
-            {
-                if (depth == 0)
-                    break;
-                depth -= 1;
-                continue;
-            }
-            import std.stdio;
-            import std.algorithm;
-            import std.range;
-            import std.format;
-            import std.algorithm : all;
-            foreach (e; stack[0 .. depth + 1]) // stack shall only contain pointers to within the packed data
-            {
-                assert(cast(void*)e >= cast(void*)&dst[0]
-                    && e < (cast(void*)&dst[0] + (cast(void[])dst[]).length));
-                assert(&*e);
-            }
-            foreach (ref e; stack[depth + 1 .. $])
-                debug e = null;
-
-            debug assert(_should == stack[0]); // the bottom of the stack should always point to the same node
-
-            //stderr.writefln("{depth: %s}%s", depth, stack[depth].toString);
-            ChildTypes type = (*stack[depth])[idx[depth]].type;
-            if (type.among(allFalse, allTrue, pending))
-            {
-                idx[depth] += 1;
-                continue;
-            }
-            if (type == thisPtr)
-            {
-                if (dst[].length < written + NodeType.sizeof) // data doesn't fit
-                {
-                    const(ubyte*) orig = dst.ptr;
-                    assert(dst[].length / 2 >= NodeType.sizeof);
-                    if (!expandArray(sedecAllocator, dst, dst[].length / 2))
-                        assert(0);
-                    foreach (ref e; stack[0 .. depth + 1])
-                    {
-                        //stderr.writefln!"prev: %s, new: %s, diff: %s"(orig, dst.ptr, cast(size_t)(orig-dst.ptr));
-                        //stderr.writefln!"%s - %s + %s"(cast(size_t)e, cast(size_t)orig, cast(size_t)dst.ptr);
-                        e = cast(NodeType*)((cast(void*)e)-cast(size_t)orig+cast(size_t)dst.ptr);
-                        //assert(cast(size_t)e < 0xff00000000000000);
-                    }
-                }
-
-                // copy referenced node and change pointer to the offset in the new packed blob
-
-                NodeType* data = (*stack[depth])[idx[depth]].thisPtr;
-
-                assert(&*data);
-                ubyte[] leftover = objcpy(*data, dst[written .. $]);
-
-                stderr.writefln("change %x to %x", data, cast(size_t)(dst.ptr + written));
-                (*stack[depth])[idx[depth]].thisOffset = written;
-                static if (freeCopied)
-                    sedecAllocator.dispose(data);
-
-                idx[depth] += 1;
-                depth += 1;
-                idx[depth] = 0;
-                assert(depth != 0);
-                stack[depth] = cast(NodeType*)&dst[written .. $][0 .. ulong.sizeof][0];
-
-                assert(dst[written .. $].length - leftover.length == NodeType.sizeof);
-
-                written += NodeType.sizeof;
-                assert(written % 8 == 0);
-                //dst[0 .. written].printBuf;
-                continue;
-            }
-            if (type == compressedThis)
-            {
-                // extract pointer and change it to the offset in the new packed blob
-                //ubyte* blob = stack[depth]._children[idx[depth]].compressed;
-                ubyte* blob = (*stack[depth])[idx[depth]].compressedThis;
-                //stack[depth]._children[idx[depth]].thisOffset = written;
-                (*stack[depth])[idx[depth]].thisOffset = written;
-
-                assert(blob !is null);
-                assert(written <= dst[].length);
-                ulong compressedLength = *cast(ulong*)blob;
-                if (dst[].length < written + compressedLength + ulong.sizeof) // data doesn't fit
-                {
-                    const(ubyte*) orig = dst.ptr;
-                    if (!expandArray(sedecAllocator, dst, max(compressedLength + ulong.sizeof, dst[].length / 2)))
-                        assert(0);
-                    foreach (ref e; stack[])
-                    {
-                        e = cast(NodeType*)(cast(void*)e + cast(size_t)orig - cast(size_t)dst.ptr);
-                    }
-                    debug _should = cast(NodeType*)(cast(void*)_should + cast(size_t)orig - cast(size_t)dst.ptr);
-                }
-                blob[0 .. compressedLength + ulong.sizeof].copy(dst[written .. $]);
-                static if (freeCopied)
-                    sedecAllocator.dispose(blob);
-                written += compressedLength + ulong.sizeof;
-                assert(written % 8 == 0);
-                idx[depth] += 1;
-                continue;
-            }
-            unreachable;
-        }
-        void[] aaa = dst;
-
-        sedecAllocator.reallocate(aaa, cast(size_t)written);
-        dst = cast(ubyte[])aaa;
-        assert(dst.length % 8 == 0 && aaa.length % 8 == 0);
+        if (dst is null)
+            assert(0);
+        ulong written = pack!(freeCopied)(node, dst, ulong.sizeof);
+        objcpy(written, dst[0 .. ulong.sizeof]);
+        static if (freeCopied)
+            sedecAllocator.dispose(node);
+        sedecAllocator.shrinkArray(dst, dst.length - written);
         return dst;
     }
+
+    ulong pack(bool freeCopied)(NodeType* node, ref ubyte[] dst, ulong pos)
+        in(node !is null)
+        in(pos <= dst.length)
+    {
+        if (dst.length - pos >= NodeType.sizeof)
+        {
+            import std.algorithm : max;
+            if (!sedecAllocator.expandArray(dst, max(dst.length / 2, NodeType.sizeof)))
+                assert(0);
+        }
+        ulong occupied = 0;
+
+        objcpy(*node, dst[pos .. $]);
+        occupied += NodeType.sizeof;
+
+        // we only know the offset in the array, the array may be relocated by subsequent packing
+        NodeType* currNode()
+        {
+            return cast(NodeType*)&dst[pos];
+        }
+
+        with (ChildTypes) foreach (idx; 0 .. 16)
+        {
+            import std.algorithm : among;
+            ChildTypes type = (*currNode)[idx].type;
+            if (type == thisPtr)
+            {
+                NodeType* orig = (*currNode)[idx].thisPtr;
+                ulong written = pack!freeCopied((*currNode)[idx].thisPtr, dst, pos + occupied);
+                (*currNode)[idx].thisOffset = pos + occupied;
+                occupied += written;
+                static if (freeCopied)
+                    sedecAllocator.dispose(orig);
+            }
+            else if (type == compressedThis)
+            {
+                ubyte* orig = (*currNode)[idx].compressedThis;
+                ulong written = pack!freeCopied((*currNode)[idx].compressedThis, dst, pos + occupied);
+                (*currNode)[idx].compressedOffset = pos + occupied;
+                occupied += written;
+                static if (freeCopied)
+                    sedecAllocator.dispose(orig);
+            }
+            else if (type.among(pending, allTrue, allFalse))
+            {}
+        }
+        return occupied;
+    }
+
+    ulong pack(bool freeCopied)(ubyte* blob, ref ubyte[] dst, ulong pos)
+        in(blob !is null)
+        in(pos <= dst.length)
+    {
+        ulong blobLength = *cast(ulong*)blob;
+
+        assert((blobLength + ulong.sizeof) % ulong.sizeof);
+
+        if (dst.length - pos >= ulong.sizeof + blobLength)
+        {
+            import std.algorithm : max;
+            if (!sedecAllocator.expandArray(dst, max(dst.length / 2, ulong.sizeof + blobLength)))
+                assert(0);
+        }
+        ulong occupied = 0;
+
+        dst[pos .. $][0 .. ulong.sizeof + blobLength] = blob[0 .. ulong.sizeof + blobLength];
+        occupied += ulong.sizeof + blobLength;
+
+        return occupied;
+    }
+
+
 
     void compress(V)(NodeType* node, V idx)
         in(node !is null)
@@ -891,11 +842,11 @@ void printBuf(ubyte[] buf)
     writefln!"[%s%(%02x %)]"(buf.length > 400 ? "… " : "", buf.take(400));
 }
 
-ubyte[] objcpy(T)(auto ref T src, ubyte[] dst)
+ubyte[] objcpy(T)(auto ref T src, ubyte[] dst, ulong ll = __LINE__)
     in(T.sizeof <= dst[].length)
 {
 import std.conv;
-    stderr.writefln("%s written to %x (%d)", src, cast(size_t)dst.ptr, T.sizeof);
+    stderr.writefln("%s written to %x (%d) %s", src, cast(size_t)dst.ptr, T.sizeof, ll);
     dst[0 .. T.sizeof] = *(cast(ubyte[T.sizeof]*)&src);
     return dst[T.sizeof .. $];
 }

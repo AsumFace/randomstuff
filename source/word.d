@@ -267,15 +267,9 @@ struct Word(ulong N, ulong B = 1)
                     return i >= N;
                 }
 
-                this(const(Word)* context)
-                {
-                    this.context = context;
-                    i = 0;
-                }
-
                 invariant(context !is null);
             }
-            return WordRange(&this);
+            return WordRange(&this, 0);
         }
 
         DigitType opIndex(ulong idx) const

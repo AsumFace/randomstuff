@@ -189,3 +189,6 @@ size_t ZSTD_decompress_usingDDict(ZSTD_DCtx* dctx,
     void* dst, size_t dstCapacity,
     const(void)* src, size_t srcSize,
     const(ZSTD_DDict)* ddict);
+
+
+size_t ZSTD_initCStream(ZSTD_CStream*, int);

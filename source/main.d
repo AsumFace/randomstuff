@@ -12,43 +12,57 @@ void main()
 {
     import sedectree;
 
-    auto tree = sedecTree!(uint, c => cast(bool)((c.x*c.y)%2));
+    auto tree = sedecTree!(uint, c => false);
 
-    Vector!(uint, 2)[] points = new Vector!(uint, 2)[10000];
+    Vector!(uint, 2)[] points = new Vector!(uint, 2)[10];
 
     foreach (ref e; points[])
     {
         e = Vector!(uint, 2)(uniform!uint, uniform!uint);
     }
 
-    foreach (i; 0 .. 10000)
+    foreach (y; 0 .. 4)
     {
-        tree[points[i]] = uniform!int < 0;
-    }
-    foreach (i, p; points[])
-    {
-        writefln!"%s %s"(i, tree[p]);
-    }
-    ubyte[] written = tree.packNode(tree.root);
-
-
-
-    foreach (x; 0 .. 10)
-    {
-        foreach (y; 0 .. 10)
+        foreach (x; 0 .. 4)
         {
-            bool xv;
-            if (y < 5)
-                xv = true;
-            else
-                xv = false;
-            tree[x, y] = xv;
+            tree[x, y] = false;
         }
     }
 
-    foreach (y; 0 .. 10)
+    foreach (x; 0 .. 4)
     {
-        foreach (x; 0 .. 10)
+        tree[3-x, x] = true;
+    }
+
+    foreach (y; 0 .. 4)
+    {
+        foreach (x; 0 .. 4)
+        {
+            writef!"%b"(tree[x, y]);
+        }
+        writeln;
+    }
+    foreach (i; 0 .. 16)
+    {
+        tree.compress(tree.root, vec2l(i % 4, i / 4));
+    }
+
+    foreach (y; 0 .. 4)
+    {
+        foreach (x; 0 .. 4)
+        {
+            writef!"%b"(tree[x, y]);
+        }
+        writeln;
+    }
+    foreach (x; 0 .. 4)
+    {
+        tree[x, x] = true;
+    }
+
+    foreach (y; 0 .. 4)
+    {
+        foreach (x; 0 .. 4)
         {
             writef!"%b"(tree[x, y]);
         }
@@ -57,12 +71,10 @@ void main()
 
 
 
-    Thread.sleep(500.msecs);
+    //Thread.sleep(500.msecs);
     sedecAllocator.reportStatistics(stderr);
-    Thread.sleep(10000.seconds);
 
-    if (true ? true : false)
-        assert(0, "end of program");
+    return;
 
     import std.datetime;
     if (glfwInit == false)

@@ -1,112 +1,6 @@
 project('behold', 'd')
 
 behold_sources = [
-  'dependencies/arsd/bmp.d',
-  'dependencies/arsd/color.d',
-  'dependencies/arsd/dds.d',
-  'dependencies/arsd/image.d',
-  'dependencies/arsd/jpeg.d',
-  'dependencies/arsd/nanovega.d',
-  'dependencies/arsd/pcx.d',
-  'dependencies/arsd/png.d',
-  'dependencies/arsd/simpledisplay.d',
-  'dependencies/arsd/targa.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/freetype.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftadvanc.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftbbox.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftbdf.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftbitmap.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftbzip2.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftcache.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftcid.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftcolor.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftdriver.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/fterrdef.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftfntfmt.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftgasp.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftglyph.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftgxval.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftgzip.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftimage.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftincrem.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftlcdfil.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftlist.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftlzw.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftmm.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftmodapi.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftmoderr.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftotval.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftoutln.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftparams.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftpfr.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftrender.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftsizes.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftsnames.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftstroke.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftsynth.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftsystem.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/fttrigon.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/fttypes.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ftwinfnt.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/package.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/t1tables.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/ttnameid.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/bind/tttables.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/config.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/dynload.d',
-  'dependencies/bindbc-freetype/source/bindbc/freetype/package.d',
-  'dependencies/bindbc-glfw/source/bindbc/glfw/binddynamic.d',
-  'dependencies/bindbc-glfw/source/bindbc/glfw/bindstatic.d',
-  'dependencies/bindbc-glfw/source/bindbc/glfw/package.d',
-  'dependencies/bindbc-glfw/source/bindbc/glfw/types.d',
-  'dependencies/bindbc-loader/source/bindbc/loader/package.d',
-  'dependencies/bindbc-loader/source/bindbc/loader/sharedlib.d',
-  'dependencies/bindbc-loader/source/bindbc/loader/system.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/arb/arb_01.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/arb/core_30.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/arb/core_31.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/arb/core_32.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/arb/core_33.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/arb/core_40.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/arb/core_41.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/arb/core_42.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/arb/core_43.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/arb/core_44.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/arb/core_45.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/arb/core_46.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/arb/package.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/dep/dep11.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/dep/dep12.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/dep/dep13.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/dep/dep14.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/dep/dep20.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/dep/dep21.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/dep/dep30.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl11.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl12.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl13.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl14.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl15.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl20.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl21.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl30.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl31.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl32.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl33.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl40.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl41.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl42.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl43.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl44.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl45.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/gl46.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/package.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/bind/types.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/config.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/context.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/gl.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/package.d',
-  'dependencies/bindbc-opengl/source/bindbc/opengl/util.d',
   'source/cgfm/math/box.d',
   'source/cgfm/math/funcs.d',
   'source/cgfm/math/matrix.d',
@@ -122,15 +16,14 @@ behold_sources = [
 ]
 
 inc_dirs = [
-    'dependencies/',
-    'dependencies/bindbc-glfw/source/',
-    'dependencies/bindbc-opengl/source/',
-    'dependencies/bindbc-loader/source/',
-    'dependencies/bindbc-freetype/source/',
-    'source/'
+    'source/',
+    'subprojects/bindbc-glfw/source',
+    'subprojects/bindbc-loader/source',
+    'subprojects/bindbc-opengl/source',
+    'subprojects/bindbc-freetype/source'
 ]
 
-d_versions = [
+ed_versions = [
     'BindGLFW_Static',
     'GL_45',
     'GL_ARB',
@@ -142,6 +35,15 @@ d_versions = [
     'X11'
 ]
 
+
+arsd_proj = subproject('arsd', default_options : ['bindbc=true', 'ud_versions=@0@'.format(ed_versions)])
+arsd_dep = arsd_proj.get_variable('arsd_dep')
+bindbc_glfw_proj = subproject('bindbc-glfw', default_options : 'ud_versions=@0@'.format(ed_versions))
+bindbc_glfw_dep = bindbc_glfw_proj.get_variable('bindbc_glfw_dep')
+bindbc_opengl_proj = subproject('bindbc-opengl', default_options : 'ud_versions=@0@'.format(ed_versions))
+bindbc_opengl_dep = bindbc_opengl_proj.get_variable('bindbc_opengl_dep')
+
+
 glfw_dep = dependency('glfw3', version : '>=3.0.0')
 freetype_dep = dependency('freetype2', version : '>=2.7')
 gl_dep = dependency('gl')
@@ -150,10 +52,11 @@ x11_dep = dependency('x11')
 xext_dep = dependency('xext')
 zstd_dep = dependency('libzstd', static : true)
 
-
 executable('behold',
     behold_sources,
     include_directories : inc_dirs,
-    d_module_versions : d_versions,
-    dependencies : [glfw_dep, freetype_dep, gl_dep, fontconfig_dep, x11_dep, xext_dep, zstd_dep])
-#    objects: ['/opt/ldc2-1.15/lib64/libphobos2-ldc.a', '/opt/ldc2-1.15/lib64/libdruntime-ldc.a'])
+    d_module_versions : ed_versions,
+    dependencies : [arsd_dep, glfw_dep, freetype_dep, gl_dep, fontconfig_dep, x11_dep, xext_dep, zstd_dep],
+    link_with : [arsd_proj.get_variable('arsd_lib'),
+         bindbc_glfw_proj.get_variable('bindbc_glfw_lib'),
+         bindbc_opengl_proj.get_variable('bindbc_opengl_lib')])

@@ -21,9 +21,9 @@ void main()
         e = Vector!(uint, 2)(uniform!uint, uniform!uint);
     }
 
-    foreach (y; 0 .. 4)
+    foreach (y; 0 .. 400)
     {
-        foreach (x; 0 .. 4)
+        foreach (x; 0 .. 400)
         {
             tree[x, y] = false;
         }
@@ -47,9 +47,9 @@ void main()
         tree.compress(tree.root, vec2l(i % 4, i / 4));
     }
 
-    foreach (y; 0 .. 4)
+    foreach (y; 0 .. 400)
     {
-        foreach (x; 0 .. 4)
+        foreach (x; 0 .. 400)
         {
             writef!"%b"(tree[x, y]);
         }

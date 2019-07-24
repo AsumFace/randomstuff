@@ -38,12 +38,12 @@ struct SedecNode(AddressType)
 {
     private Word!(16, 0xf) _type;
     private ChildStore[16] _children;
-    debug ulong _protector = 0xdeadbeef;
+    debug ulong _protector = 0xefbeadde;// 0xdeadbeef;
 
     static assert(_type.sizeof == 8); // should be packed exactly with no padding
     invariant
     {
-        debug assert(_protector == 0xdeadbeef, format("protector has been corrupted! %08x, this at %x", _protector, &this));
+        debug assert(_protector == 0xefbeadde, format("protector has been corrupted! %08x, this at %x", _protector, &this));
         assert(null is cast(void*)0, "null pointer does not point to 0. this code assumes that");
         //assert(cast(size_t)&this < 0xff00000000000000);
         foreach (i; 0 .. 16)
@@ -291,13 +291,14 @@ struct SedecTree(AddressType, alias calc)
         assert(&*activeNode);
         Vector!(AddressType, 2) begin = AddressType.min;
         AddressType width = AddressType.max; // actual width is +1, a state with no width is not useful
-        size_t stackOffset;
+        size_t offsetBase = 0; // if offsetBase is greater than 0, we are operating in cache
         while (true)
         {
+            import std.range;
             assert((width + 1).isPowerOf2 || width + 1 == 0); // width quartered with each step
             assert(width >= 3 && begin % 4 == 0); // smallest node covers 4x4 pixels, alignment given by nature
             auto subIdx = cast(Vector!(ubyte, 2))((Vector!(AddressType, 2)(i1, i2) - begin) / (width / 4 + 1));
-            stderr.writefln("w%s d%s %s", width, depth, (*activeNode).toString);
+            //stderr.writefln("w%s d%s %s", width, depth, (*activeNode).toString);
             assert(activeNode !is null);
             ChildTypes result = (*activeNode)[subIdx].type;
 
@@ -309,7 +310,7 @@ struct SedecTree(AddressType, alias calc)
                 return false;
             if (result == ChildTypes.allTrue)
                 return true;
-            if (stackOffset == 0)
+            if (offsetBase == 0)
             {
                 if (result == ChildTypes.thisPtr) // just jump into the next lower division and repeat
                 {
@@ -320,10 +321,10 @@ struct SedecTree(AddressType, alias calc)
                 }
                 if (result == ChildTypes.compressedThis) // node is compressed
                 {
-                    // cache miss
-                    if (cache is null
-                        ||*cast(ubyte**)(&cache[0 .. ulong.sizeof][0]) != (*activeNode)[subIdx].compressedThis)
-                        // we discard the existing cache and create a new one
+
+                    auto cacheResponse = zcache.query((*activeNode)[subIdx].compressedThis);
+                    if (cacheResponse is null) // cache miss
+                        // we reuse any existing memory but overwrite the containing data
                     {
                         ubyte* compressedBlob = (*activeNode)[subIdx].compressedThis;
                         assert(compressedBlob !is null);
@@ -332,27 +333,39 @@ struct SedecTree(AddressType, alias calc)
                         if (contentSize > size_t.max)
                             assert(0);
                         assert(contentSize % ulong.sizeof == 0);
-                        cache = makeArray!void(sedecAllocator, contentSize + ulong.sizeof);
+
+                        ulong neededSize = contentSize + size_t.sizeof;
+                        if (zcache.store.length < neededSize + ulong.sizeof * 2) // 2*8 bytes zero termination!
                         {
-                            size_t neededSize = contentSize + size_t.sizeof;
-                            bool success =
-                                sedecAllocator.reallocate(cache, neededSize + neededSize / 2);
-                            if (!success)
-                                assert(0);
+                            if (zcache.store is null)
+                            {
+                                zcache.store = sedecAllocator.makeArray!ubyte(neededSize + ulong.sizeof * 2);
+                                if (zcache.store is null)
+                                    assert(0);
+                            }
+                            if (!sedecAllocator.expandArray(zcache.store, neededSize + ulong.sizeof * 2))
+                                assert(0, format("could not allocate additional %s bytes", neededSize + ulong.sizeof * 2));
                         }
-                        assert(cast(ubyte[])cache !is null); // should never fail?
-                        *cast(ulong*)&cache[ulong.sizeof .. ulong.sizeof * 2][0] = contentSize;
+
                         ZSTD_decompressDCtx(dctx,
-                            cache[].ptr + ulong.sizeof * 2, cache[].length - ulong.sizeof * 2,
+                            zcache.store.ptr + ulong.sizeof, zcache.store.length - ulong.sizeof,
                             compressedBlob + ulong.sizeof, cast(size_t)*cast(ulong*)&compressedBlob);
 
-                        *cast(ubyte**)&cache[0 .. ulong.sizeof][0] = (*activeNode)[subIdx].compressedThis;
+                        // set data origin
+                        *cast(ubyte**)&zcache.store[0 .. ulong.sizeof][0] = (*activeNode)[subIdx].compressedThis;
+
+                        //if (zcache.store.length >= ulong.sizeof)
+                        //    stderr.writefln!"%(%(%02x %)\n####\n%)"(zcache.store[ulong.sizeof * 2 .. $].chunks(NodeType.sizeof));
+
+                        cacheResponse = zcache.query((*activeNode)[subIdx].compressedThis);
+                        assert(cacheResponse !is null);
                     }
+
                     // switch to cache
-                    stackOffset =
-                        cast(size_t)*cast(ulong*)&cache[ulong.sizeof .. ulong.sizeof * 2][0] + ulong.sizeof * 2;
-                    nextStep(begin, width, subIdx); depth += 1;
-                    activeNode = cast(NodeType*)&cache[ulong.sizeof * 2 .. ulong.sizeof * 2 + NodeType.sizeof][0];
+                    offsetBase = ulong.sizeof;
+                    nextStep(begin, width, subIdx);
+                    depth += 1;
+                    activeNode = cacheResponse;
                     continue;
                 }
                 unreachable;
@@ -367,67 +380,61 @@ struct SedecTree(AddressType, alias calc)
                     assert(width != 3);
                     nextStep(begin, width, subIdx);
                     // we want the data to be correctly aligned
-                    assert(cast(ulong)cache[].ptr % ulong.sizeof == 0);
+                    assert(cast(ulong)&zcache.store[0] % ulong.sizeof == 0);
                     assert((*activeNode)[subIdx].thisOffset % ulong.sizeof == 0);
 
-                    activeNode = cast(NodeType*)((*activeNode)[subIdx].thisOffset + cache[].ptr);
+                    activeNode = cast(NodeType*)(&zcache.store
+                        [offsetBase .. $]
+                        [(*activeNode)[subIdx].thisOffset .. $]
+                        [0 .. NodeType.sizeof][0]);
                     continue;
                 }
                 if (result == ChildTypes.compressedThis)
                     // instead of discarding all cache, we only discard the mismatching compression branch
                 {
-                    void[] dst = calcFreeRange(cache[stackOffset .. $], activeNode);
+                    offsetBase = zcache.nextStripBase(offsetBase);
 
-                    ubyte* compressedBlob = (*activeNode)[subIdx].compressedThis;
-                    assert(compressedBlob !is null);
+                    ulong compressedBlob = (*activeNode)[subIdx].compressedOffset;
+                    assert(compressedBlob != 0);
 
                     ulong contentSize = 0;
 
-                    // if the data can fit and the pointers match, we have a cache hit
-                    if (dst[].length >= ulong.sizeof * 2 + NodeType.sizeof
-                        && *cast(ubyte**)&dst[0] == (*activeNode)[subIdx].compressedThis)
+                    // if the offsets match, we have a cache hit
+                    ulong cachedOffset = *cast(ulong*)zcache.store[offsetBase - ulong.sizeof .. offsetBase][0];
+                    if (cachedOffset == compressedBlob)
                     {
                         activeNode =
-                            cast(NodeType*)&(dst[ulong.sizeof * 2 .. ulong.sizeof * 2 + NodeType.sizeof][0]);
-                        stackOffset += *cast(ulong*)&dst[ulong.sizeof .. ulong.sizeof * 2][0];
+                            cast(NodeType*)&(zcache.store[offsetBase .. $][ulong.sizeof .. $][0 .. NodeType.sizeof][0]);
                         nextStep(begin, width, subIdx);
                         continue;
                     }
 
                     // cache miss
-                    contentSize =
-                        ZSTD_getFrameContentSize(compressedBlob + ulong.sizeof, *cast(ulong*)&compressedBlob);
-                    size_t neededSize = contentSize + ulong.sizeof * 2;
-                    if (dst[].length < neededSize)
-                        // reallocate to make space
+                    contentSize = ZSTD_getFrameContentSize(
+                        &zcache.store[offsetBase + compressedBlob + ulong.sizeof .. $][0],
+                        *cast(ulong*)zcache.store[offsetBase + compressedBlob .. $][0 .. ulong.sizeof][0]);
+                    size_t neededSize = contentSize + ulong.sizeof;
+
+                    if (zcache.store.length < neededSize + ulong.sizeof * 2) // 2*8 bytes zero termination!
                     {
-                        if (contentSize > size_t.max)
+                        ptrdiff_t origOffset = cast(void*)activeNode - &zcache.store[0];
+                        if (!sedecAllocator.expandArray(zcache.store, neededSize + ulong.sizeof * 2))
                             assert(0);
                         assert(contentSize % ulong.sizeof == 0);
-                        {
-                            ptrdiff_t activeOffset = cast(void*)activeNode - cache.ptr;
 
-                            bool success =
-                                sedecAllocator.reallocate(cache, neededSize + neededSize / 2);
-                            if (!success)
-                                assert(0);
-                            activeNode = cast(NodeType*)(cache.ptr + activeOffset);
-                        }
+                        // recalculate activeNode pointer since the node might have been relocated
+                        // (commented because the pointer is not needed anymore)
+                        // activeNode = cast(NodeType*)(&zcache.store[0] + activeOffset);
                     }
 
-                    assert(cast(ubyte[])dst !is null); // should never fail
-                    *cast(ubyte**)&dst[0 .. ulong.sizeof][0] = compressedBlob;
-                    *cast(ulong*)&dst[ulong.sizeof .. ulong.sizeof * 2][0] = contentSize;
-                    ZSTD_decompressDCtx(dctx,
-                        dst.ptr + ulong.sizeof * 2, dst.length - ulong.sizeof * 2,
-                        compressedBlob + ulong.sizeof, cast(size_t)*cast(ulong*)&compressedBlob);
-                    activeNode = cast(NodeType*)((*activeNode)[subIdx].thisOffset + cache[].ptr);
-                    {
-                        size_t newStackOffset = dst[].ptr - cache[].ptr + neededSize;
-                        assert(newStackOffset == stackOffset + neededSize);
-                    }
+                    *cast(ulong*)&zcache.store[offsetBase - ulong.sizeof .. offsetBase][0] = compressedBlob;
+
+                    dctx.ZSTD_decompressDCtx(
+                        &zcache.store[offsetBase .. $][0], zcache.store[offsetBase .. $ - ulong.sizeof].length,
+                        &zcache.store[offsetBase + compressedBlob + ulong.sizeof],
+                        cast(size_t)*cast(ulong*)&zcache.store[offsetBase + compressedBlob .. $][0 .. ulong.sizeof][0]);
+                    activeNode = cast(NodeType*)&zcache.store[offsetBase .. $][0 .. NodeType.sizeof][0];
                     nextStep(begin, width, subIdx);
-                    stackOffset += neededSize;
                     continue;
                 }
                 unreachable;
@@ -441,47 +448,6 @@ struct SedecTree(AddressType, alias calc)
         begin += cast(Vector!(AddressType, 2))pos * (width / 4 + 1);
         width /= 4;
     }
-
-    // src is the pointer to the compressed blob
-    // dst to the cache buffer
-    void[] cache;
-
-    //NodeType*[AddressType.sizeof * 8 / 2] stack;
-
-    /+void optimize()
-    {
-        NodeType*[AddressType.sizeof * 8 / 2] stack;
-        ubyte[AddressType.sizeof * 8 / 2] idx;
-        ubyte depth = 0;
-
-        stack[depth] = root;
-
-        while (true)
-        {
-            if (depth > 0)
-            {
-                import std.algorithm;
-                if (stack[depth]._type.all!(n => n.asInt == ChildTypes.allTrue))
-                {
-                    stack[depth - 1]._type[idx[depth - 1]] = ChildTypes.allTrue;
-
-                    // this field has no meaning, is however seen by the compressor
-                    stack[depth - 1]._children[idx[depth - 1]].thisOffset = 0;
-                    recursiveFree(stack[depth]);
-                    depth -= 1;
-                }
-                else if (stack[depth]._type.all!(n => n.asInt == ChildTypes.allFalse))
-                {
-                    stack[depth - 1]._type[idx[depth - 1]] = ChildTypes.allFalse;
-                    stack[depth - 1]._children[idx[depth - 1]].thisOffset = 0;
-                    recursiveFree(stack[depth]);
-                    depth -= 1;
-                }
-            }
-            ChildTypes result = cast(ChildTypes)stack[depth]._type[idx[depth]];
-
-        }
-    }+/
 
     void recursiveFree(NodeType* node)
     {}
@@ -645,10 +611,93 @@ struct SedecTree(AddressType, alias calc)
     {
         ZSTD_freeCCtx(cctx);
         ZSTD_freeDCtx(dctx);
-        sedecAllocator.dispose(cache);
+        zcache.free;
     }
 
-    void[] calcFreeRange(void[] p, void* currPos)
+    ZCache zcache;
+
+    struct ZCache
+    {
+        /+ the cache can be thought of a stack of cache strips, the first encountered compressed blob is extracted and
+         put to the bottom of the stack, each subsequently encountered direct or indirect compressed child is extracted
+         and put ontop +/
+        // each cache strip consists of source pointer/offset + non-inclusive packed length + packed data
+        // packed length is contained within the compressed data and will be placed upon extraction
+        // all cache strips are placed inside one single allocation, freeing `store` drops the entire cache
+
+        import std.algorithm : all;
+        invariant(store is null || (cast(size_t)store.ptr) % ulong.sizeof == 0); // we want a specific alignment
+        invariant(store.length == 0 || store[$ - ulong.sizeof * 2 .. $].all!(n => n == 0));
+        ubyte[] store;
+
+        ubyte* source(ubyte* blob)
+        {
+            return cast(ubyte*)*cast(ulong*)blob;
+        }
+
+        ulong source(ulong offset)
+        {
+            return *cast(ulong*)&store[offset .. $][0 .. ulong.sizeof][0];
+        }
+
+        ulong len(ubyte* blob)
+        {
+            return *cast(ulong*)(blob + ulong.sizeof);
+        }
+
+        Tuple!(NodeType*, "head", ulong, "base") query(ulong sourceOffset, ulong skip = 0)
+            in(store.length == 0 || skip <= (store.length - ulong.sizeof * 2))
+        {
+            auto result = typeof(return)(null, 0);
+            ulong offset = skip;
+            while (source(offset) != 0)
+            {
+                assert(offset % ulong.sizeof == 0);
+                if (source(offset) == sourceOffset) // we have a match
+                {
+                    ulong packLen = len(&store[offset]);
+                    result = typeof(return)(cast(NodeType*)(&store[0] + offset + ulong.sizeof * 2), offset + ulong.sizeof);
+                    break;
+                }
+                else // jump to the next strip
+                {
+                    ulong packLen = len(&store[offset]);
+                    offset += ulong.sizeof * 2 + packLen;
+                }
+                assert(offset < store.length);
+            }
+            return result;
+        }
+
+        NodeType* query(ubyte* blob)
+            in(blob !is null)
+        {
+            if (store is null)
+                return null;
+            if (blob == *cast(ubyte**)store)
+                return cast(NodeType*)&store[ulong.sizeof * 2 .. $][0 .. NodeType.sizeof][0];
+            return null;
+        }
+
+        ulong nextStripBase(ulong base) // result will point to the length field
+        {
+            auto step = *cast(ulong*)&store[base .. $][0 .. ulong.sizeof][0];
+            return base + step + ulong.sizeof;
+        }
+
+        void free()
+        {
+            sedecAllocator.dispose(store);
+            store = null;
+        }
+
+        void dropAll()
+        {
+            *cast(void**)&store[0 .. ulong.sizeof][0] = null;
+        }
+    }
+
+    ubyte[] calcFreeRange(ubyte[] p, void* currPos)
     {
         assert(currPos >= p.ptr && currPos < p.ptr + p.length); // currPos must be in range
         while (true)
@@ -675,8 +724,9 @@ struct SedecTree(AddressType, alias calc)
         ulong written = pack!(freeCopied)(node, dst, ulong.sizeof);
         objcpy(written, dst[0 .. ulong.sizeof]);
         static if (freeCopied)
-            sedecAllocator.dispose(node);
-        sedecAllocator.shrinkArray(dst, dst.length - written);
+        sedecAllocator.dispose(node);
+
+        sedecAllocator.shrinkArray(dst, dst.length - written - ulong.sizeof);
         return dst;
     }
 
@@ -687,8 +737,9 @@ struct SedecTree(AddressType, alias calc)
         if (dst.length - pos >= NodeType.sizeof)
         {
             import std.algorithm : max;
+            assert(dst !is null);
             if (!sedecAllocator.expandArray(dst, max(dst.length / 2, NodeType.sizeof)))
-                assert(0);
+                assert(0, format("could not allocate additional %s bytes", max(dst.length / 2, NodeType.sizeof)));
         }
         ulong occupied = 0;
 
@@ -776,6 +827,9 @@ struct SedecTree(AddressType, alias calc)
             srcBuf.src = packed.ptr;
             srcBuf.size = packed.length;
 
+            //            import std.range;
+            // stderr.writefln!"PRINT%(%(%02x %)\n&&&&\n%)"(packed[ulong.sizeof * 1 .. $].chunks(NodeType.sizeof));
+
             ubyte[] dst = sedecAllocator.makeArray!ubyte(packed.length / 4); // we assume that 75 % reduction is realistic
             dstBuf.dst = dst.ptr;
             dstBuf.size = dst.length;
@@ -818,8 +872,8 @@ struct SedecTree(AddressType, alias calc)
             // ensure that everything aligns properly in further runs
             void[] arr = cast(void[])dst;
             sedecAllocator.reallocate(arr, dstBuf.pos + (8 - (dstBuf.pos % 8)) % 8);
-
             dst = cast(ubyte[])arr;
+
             assert(dst.length % 8 == 0);
 
             (*node)[idx].compressedThis = dst.ptr;
@@ -846,7 +900,7 @@ ubyte[] objcpy(T)(auto ref T src, ubyte[] dst, ulong ll = __LINE__)
     in(T.sizeof <= dst[].length)
 {
 import std.conv;
-    stderr.writefln("%s written to %x (%d) %s", src, cast(size_t)dst.ptr, T.sizeof, ll);
+    //stderr.writefln("%s written to %x (%d) %s", src, cast(size_t)dst.ptr, T.sizeof, ll);
     dst[0 .. T.sizeof] = *(cast(ubyte[T.sizeof]*)&src);
     return dst[T.sizeof .. $];
 }

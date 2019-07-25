@@ -297,7 +297,21 @@ struct SedecTree(AddressType, alias calc)
             import std.range;
             assert((width + 1).isPowerOf2 || width + 1 == 0); // width quartered with each step
             assert(width >= 3 && begin % 4 == 0); // smallest node covers 4x4 pixels, alignment given by nature
-            auto subIdx = cast(Vector!(ubyte, 2))((Vector!(AddressType, 2)(i1, i2) - begin) / (width / 4 + 1));
+            //auto subIdx = cast(Vector!(ubyte, 2))((Vector!(AddressType, 2)(i1, i2) - begin) / (width / 4 + 1));
+            Vector!(ubyte, 2) subIdx;
+            {
+                import core.bitop;
+                auto tt = Vector!(AddressType, 2)(i1, i2);
+                tt -= begin;
+                //assert(width > 7, format("%s", width));
+                auto divisor = (width / 4 + 1);
+                assert(divisor.isPowerOf2);
+                assert(divisor >= 1, format("%s", divisor));
+                auto tt2 = tt / divisor; // correct reference solution
+                tt >>= bsf(divisor);
+                assert(tt == tt2, format("%s %s", tt, tt2));
+                subIdx = cast(typeof(subIdx))tt;
+            }
             //stderr.writefln("w%s d%s %s", width, depth, (*activeNode).toString);
             assert(activeNode !is null);
             ChildTypes result = (*activeNode)[subIdx].type;
@@ -466,8 +480,24 @@ struct SedecTree(AddressType, alias calc)
 
         while (true)
         {
+            assert((width + 1).isPowerOf2 || width + 1 == 0);
             assert(width >= 3 && begin % 4 == 0);
-            auto subIdx = cast(Vector!(ubyte, 2))((Vector!(AddressType, 2)(i1, i2) - begin) / (width / 4 + 1));
+            //auto subIdx = cast(Vector!(ubyte, 2))((Vector!(AddressType, 2)(i1, i2) - begin) / (width / 4 + 1));
+            Vector!(ubyte, 2) subIdx;
+            {
+                import core.bitop;
+                auto tt = Vector!(AddressType, 2)(i1, i2);
+                tt -= begin;
+                //assert(width > 7, format("%s", width));
+                auto divisor = (width / 4 + 1);
+                assert(divisor.isPowerOf2);
+                assert(divisor >= 1, format("%s", divisor));
+                auto tt2 = tt / divisor; // correct reference solution
+                tt >>= bsf(divisor);
+                assert(tt == tt2, format("%s %s", tt, tt2));
+                subIdx = cast(typeof(subIdx))tt;
+            }
+
             ChildTypes result = (*activeNode)[subIdx].type;
 
             if (width == 3)

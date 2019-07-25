@@ -7,32 +7,57 @@ import core.thread;
 import std.string;
 import required;
 import cgfm.math;
+import std.experimental.checkedint;
+import std.algorithm;
 
 void main()
 {
     import sedectree;
 
-    auto tree = sedecTree!(uint, c => false);
+    auto tree = sedecTree!(ulong, c => false);
 
-    Vector!(uint, 2)[] points = new Vector!(uint, 2)[10];
+    Vector!(ulong, 2)[] points = new Vector!(ulong, 2)[1000];
 
     foreach (ref e; points[])
     {
-        e = Vector!(uint, 2)(uniform!uint, uniform!uint);
+        e = Vector!(ulong, 2)(uniform!ulong, uniform!ulong);
     }
 
-    foreach (y; 0 .. 400)
+    /+foreach (y; 0 .. 4000)
     {
-        foreach (x; 0 .. 400)
+        foreach (x; 0 .. 4000)
         {
             tree[x, y] = false;
         }
-    }
-
-    foreach (x; 0 .. 4)
+    }+/
+    auto begin = MonoTime.currTime;
+    foreach (i, p; points)
     {
-        tree[3-x, x] = true;
+        stderr.writefln!"i%s"(i);
+        auto radius = uniform(50, 201);
+        bool overflow = false;
+        auto xl = checked!Saturate(p.x);
+        auto yl = checked!Saturate(p.y);
+        auto xu = checked!Saturate(p.x);
+        auto yu = checked!Saturate(p.y);
+        xl -= radius;
+        yl -= radius;
+        xu += radius;
+        yu += radius;
+        auto squaredRadius = radius * radius;
+        foreach (y; cast(ulong)yl .. cast(ulong)yu)
+        {
+            foreach (x; cast(ulong)xl .. cast(ulong)xu)
+            {
+                if (y*y + x*x <= squaredRadius)
+                    tree[p] = true;
+                else
+                    tree[p] = false;
+            }
+        }
     }
+    auto dura = MonoTime.currTime - begin;
+    stderr.writefln!"time needed: %s"(dura);
 
     foreach (y; 0 .. 4)
     {
@@ -42,14 +67,17 @@ void main()
         }
         writeln;
     }
+    sedecAllocator.reportStatistics(stderr);
+    tree.optimize(tree.root);
+    sedecAllocator.reportStatistics(stderr);
     foreach (i; 0 .. 16)
     {
         tree.compress(tree.root, vec2l(i % 4, i / 4));
     }
-
-    foreach (y; 0 .. 400)
+    sedecAllocator.reportStatistics(stderr);
+    foreach (y; 0 .. 4)
     {
-        foreach (x; 0 .. 400)
+        foreach (x; 0 .. 4)
         {
             writef!"%b"(tree[x, y]);
         }

@@ -41,7 +41,7 @@ struct SedecNode(AddressType)
     debug ulong _protector = 0xefbeadde;// 0xdeadbeef;
 
     static assert(_type.sizeof == 8); // should be packed exactly with no padding
-    invariant
+    /+invariant
     {
         debug assert(_protector == 0xefbeadde, format("protector has been corrupted! %08x, this at %x", _protector, &this));
         assert(null is cast(void*)0, "null pointer does not point to 0. this code assumes that");
@@ -64,7 +64,7 @@ struct SedecNode(AddressType)
                 assert(_children[i].raw == 0, format!"type: %s | value: %s | byOffset: %s"(cast(ChildTypes)(_type[i].asInt&0b111), _children[i].raw, (_type[i].asInt & byOffsetFlag) != 0));
             }
         }
-    }
+    }+/
     private union ChildStore
     {
         ulong raw;
@@ -200,8 +200,8 @@ struct SedecNode(AddressType)
             import std.algorithm : among;
             ChildTypes type(ChildTypes val)
                 in(val.among(ChildTypes.allTrue, ChildTypes.allFalse, ChildTypes.pending),
-                    "A type with payload must be set implicitly by assigning"
-                    ~ " the desired value using one of the setters")
+                    format("A type with payload must be set implicitly by assigning"
+                    ~ " the desired value using one of the setters. Attempted to set type to %s", val))
             {
                 context._type[i] = val;
                 context._children[i].raw = 0;
@@ -724,7 +724,7 @@ struct SedecTree(AddressType, alias calc)
         ulong written = pack!(freeCopied)(node, dst, ulong.sizeof);
         objcpy(written, dst[0 .. ulong.sizeof]);
         static if (freeCopied)
-        sedecAllocator.dispose(node);
+            sedecAllocator.dispose(node);
 
         sedecAllocator.shrinkArray(dst, dst.length - written - ulong.sizeof);
         return dst;
@@ -734,7 +734,8 @@ struct SedecTree(AddressType, alias calc)
         in(node !is null)
         in(pos <= dst.length)
     {
-        if (dst.length - pos >= NodeType.sizeof)
+        //stderr.writefln("dstl: %s; pos: %s", dst.length, pos);
+        if (dst.length - pos < NodeType.sizeof)
         {
             import std.algorithm : max;
             assert(dst !is null);
@@ -784,6 +785,7 @@ struct SedecTree(AddressType, alias calc)
         in(blob !is null)
         in(pos <= dst.length)
     {
+        //stderr.writefln("%s", pos);
         ulong blobLength = *cast(ulong*)blob;
 
         assert((blobLength + ulong.sizeof) % ulong.sizeof);
@@ -802,7 +804,76 @@ struct SedecTree(AddressType, alias calc)
         return occupied;
     }
 
-
+    // -1: mixed, 0: all pending, 1: all true, 2: all false
+    int optimize(NodeType* node = root)
+    {
+        int result;
+        bool manifested = false;
+        foreach (i; 0 .. 16)
+        {
+            auto ctype = (*node)[i].type;
+            if (ctype == ChildTypes.thisPtr)
+            {
+                int r = optimize((*node)[i].thisPtr);
+                if (!manifested)
+                {
+                    manifested = true;
+                    result = r;
+                }
+                else if (manifested && result != r)
+                    result = -1;
+            }
+            else if (ctype == ChildTypes.compressedThis)
+            {
+                manifested = true;
+                result = -1;
+                continue;
+            }
+            else if (ctype == ChildTypes.pending)
+            {
+                if (!manifested)
+                {
+                    manifested = true;
+                    result = 0;
+                }
+                else if (manifested && result != 0)
+                    result = -1;
+            }
+            else if (ctype == ChildTypes.allFalse)
+            {
+                if (!manifested)
+                {
+                    manifested = true;
+                    result = 2;
+                }
+                else if (manifested && result != 2)
+                     result = -1;
+            }
+            else if (ctype == ChildTypes.allTrue)
+            {
+                if (!manifested)
+                {
+                    manifested = true;
+                    result = 1;
+                }
+                else if (manifested && result != 1)
+                     result = -1;
+            }
+        }
+        if (result >= 0)
+        {
+            foreach (i; 0 .. 16)
+            {
+                auto ctype = (*node)[i].type;
+                if (ctype == ChildTypes.thisPtr)
+                {
+                    sedecAllocator.dispose((*node)[i].thisPtr);
+                }
+                (*node)[i].type = cast(ChildTypes)result;
+            }
+        }
+        return result;
+    }
 
     void compress(V)(NodeType* node, V idx)
         in(node !is null)
@@ -877,7 +948,8 @@ struct SedecTree(AddressType, alias calc)
             assert(dst.length % 8 == 0);
 
             (*node)[idx].compressedThis = dst.ptr;
-
+            stderr.writefln!"compressed %s bytes down to %s (%s %%)"(packed.length, dst.length,
+                cast(double)dst.length/cast(double)packed.length*100.0);
             // free source buffer
             sedecAllocator.dispose(packed);
 

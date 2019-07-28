@@ -28,22 +28,22 @@ enum ChildTypes
 alias SedecAllocator = StatsCollector!(Mallocator, Options.all);
 auto sedecAllocator = SedecAllocator();
 
-debug
+/+debug
     enum ulong byOffsetFlag = 0b1000;
 else
     enum ulong byOffsetFlag = 0;
-
++/
 struct SedecNode(AddressType)
     if (isIntegral!AddressType)
 {
     private Word!(16, 0xf) _type;
     private ChildStore[16] _children;
-    debug ulong _protector = 0xefbeadde;// 0xdeadbeef;
+    debug ulong _protector = 0xdeadbeef;
 
     static assert(_type.sizeof == 8); // should be packed exactly with no padding
-    /+invariant
+    invariant
     {
-        debug assert(_protector == 0xefbeadde, format("protector has been corrupted! %08x, this at %x", _protector, &this));
+        debug assert(_protector == 0xdeadbeef, format("protector has been corrupted! %08x, this at %x", _protector, &this));
         assert(null is cast(void*)0, "null pointer does not point to 0. this code assumes that");
         //assert(cast(size_t)&this < 0xff00000000000000);
         foreach (i; 0 .. 16)
@@ -51,20 +51,20 @@ struct SedecNode(AddressType)
             import std.stdio;
             import std.algorithm;
             //stderr.writefln("%x", &this);
-            assert((_type[i].asInt & 0b111).among(EnumMembers!ChildTypes), format!"0b%04b in %s is not a valid ChildTypes value"(_type[i].asInt, i));
+            assert(_type[i].asInt.among(EnumMembers!ChildTypes), format!"0b%04b in %s is not a valid ChildTypes value"(_type[i].asInt, i));
 
-            with (ChildTypes) if ((_type[i].asInt & 0b111).among(thisPtr, compressedThis))
+            with (ChildTypes) if (_type[i].asInt.among(thisPtr, compressedThis))
             {
-                debug assert((_type[i].asInt & byOffsetFlag) > 0
+                /+debug assert((_type[i].asInt & byOffsetFlag) > 0
                     || _children[i].thisPtr ! is null, format!"byOffset: %s | ptr: %s"((_type[i].asInt & byOffsetFlag) != 0, _children[i].thisPtr));
-            }
+            +/}
             else
             {
-                assert((_type[i].asInt & byOffsetFlag) == 0, format!"byOffset in %s is incorrectly set; %s"(i, _toString));
-                assert(_children[i].raw == 0, format!"type: %s | value: %s | byOffset: %s"(cast(ChildTypes)(_type[i].asInt&0b111), _children[i].raw, (_type[i].asInt & byOffsetFlag) != 0));
+                //assert((_type[i].asInt & byOffsetFlag) == 0, format!"byOffset in %s is incorrectly set; %s"(i, _toString));
+                //assert(_children[i].raw == 0, format!"type: %s | value: %s | byOffset: %s"(cast(ChildTypes)(_type[i].asInt&0b111), _children[i].raw, (_type[i].asInt & byOffsetFlag) != 0));
             }
         }
-    }+/
+    }
     private union ChildStore
     {
         ulong raw;
@@ -82,7 +82,7 @@ struct SedecNode(AddressType)
         auto result = format("%x{%(%04b,%)}{", _protector, _type[]);
         foreach (i, ref e; _children[])
         {
-            if ((_type[i].asInt & byOffsetFlag) > 0)
+            if ((_type[i].asInt & 0) > 0)
                 result ~= format("%d", e.thisOffset);
             else
                 result ~= format("%x", e.thisPtr);
@@ -111,17 +111,21 @@ struct SedecNode(AddressType)
         return opIndex(v.x + 4 * v.y);
     }
 
-    auto opIndex()
+    auto opSlice(ulong begin, ulong end)
+        in(begin <= 15)
+        in(end <= 16)
     {
         struct NodeRange
         {
+            ubyte end;
             invariant(context !is null);
-            invariant(idx <= 16);
+            invariant(idx <= end);
+            invariant(idx >= begin);
             SedecNode* context;
             private ubyte idx;
             bool empty() const
             {
-                return idx >= 16;
+                return idx >= end;
             }
 
             void popFront()
@@ -138,10 +142,15 @@ struct SedecNode(AddressType)
 
             ubyte length() const
             {
-                return cast(ubyte)(16 - idx);
+                return cast(ubyte)(end - idx);
             }
         }
-        return NodeRange(&this, 0);
+        return NodeRange(cast(ubyte)end, &this, cast(ubyte)begin);
+    }
+
+    auto opIndex()
+    {
+        return opSlice(0, 16);
     }
 
     auto opIndex(I)(I i)
@@ -154,31 +163,32 @@ struct SedecNode(AddressType)
             invariant(context !is null);
             immutable(ubyte) i;
 
-            bool byOffset() const
+            /+bool byOffset() const
                 in((context._type[i].asInt & 0b111).among(ChildTypes.thisPtr, ChildTypes.compressedThis))
             {
                 static assert(byOffsetFlag != 0, "byOffset flag is only available in debug mode");
                 return (context._type[i].asInt & byOffsetFlag) != 0;
-            }
+            }+/
 
             ChildTypes type() const
-                in((context._type[i].asInt & 0b111).among(EnumMembers!ChildTypes))
+                in(((context._type)[i].asInt).among(EnumMembers!ChildTypes),
+                     format("%04b is not a ChildTypes value %s", context._type[i].asInt, context.toString))
             {
-                return cast(ChildTypes)(context._type[i].asInt & 0b111);
+                return cast(ChildTypes)(context._type[i].asInt);
             }
 
             ref SedecNode* thisPtr()
                 in(type == ChildTypes.thisPtr)
                 out(r; r !is null)
             {
-                debug assert(byOffset == false);
+                //debug assert(byOffset == false);
                 return context._children[i].thisPtr;
             }
 
             auto thisOffset()
                 in(type == ChildTypes.thisPtr)
             {
-                debug assert(byOffset == true);
+                //debug assert(byOffset == true);
                 return context._children[i].thisOffset;
             }
 
@@ -186,14 +196,14 @@ struct SedecNode(AddressType)
                 in(type == ChildTypes.compressedThis)
                 out(r; r !is null)
             {
-                debug assert(byOffset == false);
+                //debug assert(byOffset == false);
                 return context._children[i].compressed;
             }
 
             ulong compressedOffset()
                 in(type == ChildTypes.compressedThis)
             {
-                debug assert(byOffset == true);
+                //debug assert(byOffset == true);
                 return context._children[i].compressedOffset;
             }
 
@@ -221,7 +231,7 @@ struct SedecNode(AddressType)
                 out(; type == ChildTypes.thisPtr)
             {
                 context._children[i].thisOffset = val;
-                context._type[i] = ChildTypes.thisPtr | byOffsetFlag;
+                context._type[i] = ChildTypes.thisPtr;// | byOffsetFlag;
                 return val;
             }
 
@@ -238,7 +248,7 @@ struct SedecNode(AddressType)
                 out(; type() == ChildTypes.compressedThis)
             {
                 context._children[i].compressedOffset = val;
-                context._type[i] = ChildTypes.compressedThis | byOffsetFlag;
+                context._type[i] = ChildTypes.compressedThis;// | byOffsetFlag;
                 return val;
             }
 
@@ -253,15 +263,15 @@ struct SedecNode(AddressType)
 }
 
 
-auto sedecTree(AddressType, alias calc)()
+auto sedecTree(AddressType, alias calc, bool zCache)()
     if (isIntegral!AddressType)
 {
-    auto result = SedecTree!(AddressType, calc)(ZSTD_createCCtx, ZSTD_createDCtx);
+    auto result = SedecTree!(AddressType, calc, zCache)(ZSTD_createCCtx, ZSTD_createDCtx);
     result.root = make!(result.NodeType)(sedecAllocator);
     return result;
 }
 
-struct SedecTree(AddressType, alias calc)
+struct SedecTree(AddressType, alias calc, bool zCache)
     if (isIntegral!AddressType)
 {
     private ZSTD_CCtx* cctx;
@@ -282,6 +292,8 @@ struct SedecTree(AddressType, alias calc)
         return opIndex(v.x, v.y);
     }
 
+
+
     bool opIndex(AddressType i1, AddressType i2)
     {
         import std.math;
@@ -291,7 +303,10 @@ struct SedecTree(AddressType, alias calc)
         assert(&*activeNode);
         Vector!(AddressType, 2) begin = AddressType.min;
         AddressType width = AddressType.max; // actual width is +1, a state with no width is not useful
-        size_t offsetBase = 0; // if offsetBase is greater than 0, we are operating in cache
+        static if (zCache)
+            size_t offsetBase = 0; // if offsetBase is greater than 0, we are operating in cache
+        else
+            enum offsetBase = 0;
         while (true)
         {
             import std.range;
@@ -335,123 +350,137 @@ struct SedecTree(AddressType, alias calc)
                 }
                 if (result == ChildTypes.compressedThis) // node is compressed
                 {
-
-                    auto cacheResponse = zcache.query((*activeNode)[subIdx].compressedThis);
-                    if (cacheResponse is null) // cache miss
-                        // we reuse any existing memory but overwrite the containing data
+                    static if (zCache)
                     {
-                        ubyte* compressedBlob = (*activeNode)[subIdx].compressedThis;
-                        assert(compressedBlob !is null);
-                        ulong contentSize =
-                            ZSTD_getFrameContentSize(compressedBlob + ulong.sizeof, *cast(ulong*)&compressedBlob);
-                        if (contentSize > size_t.max)
-                            assert(0);
-                        assert(contentSize % ulong.sizeof == 0);
-
-                        ulong neededSize = contentSize + size_t.sizeof;
-                        if (zcache.store.length < neededSize + ulong.sizeof * 2) // 2*8 bytes zero termination!
+                        auto cacheResponse = zcache.query((*activeNode)[subIdx].compressedThis);
+                        if (cacheResponse is null) // cache miss
+                            // we reuse any existing memory but overwrite the containing data
                         {
-                            if (zcache.store is null)
+                            ubyte* compressedBlob = (*activeNode)[subIdx].compressedThis;
+                            assert(compressedBlob !is null);
+                            ulong contentSize =
+                                ZSTD_getFrameContentSize(compressedBlob + ulong.sizeof, *cast(ulong*)&compressedBlob);
+                            if (contentSize > size_t.max)
+                                assert(0);
+                            assert(contentSize % ulong.sizeof == 0);
+
+                            ulong neededSize = contentSize + size_t.sizeof;
+                            if (zcache.store.length < neededSize + ulong.sizeof * 2) // 2*8 bytes zero termination!
                             {
-                                zcache.store = sedecAllocator.makeArray!ubyte(neededSize + ulong.sizeof * 2);
                                 if (zcache.store is null)
-                                    assert(0);
+                                {
+                                    zcache.store = sedecAllocator.makeArray!ubyte(neededSize + ulong.sizeof * 2);
+                                    if (zcache.store is null)
+                                        assert(0);
+                                }
+                                if (!sedecAllocator.expandArray(zcache.store, neededSize + ulong.sizeof * 2))
+                                    assert(0, format("could not allocate additional %s bytes", neededSize + ulong.sizeof * 2));
                             }
-                            if (!sedecAllocator.expandArray(zcache.store, neededSize + ulong.sizeof * 2))
-                                assert(0, format("could not allocate additional %s bytes", neededSize + ulong.sizeof * 2));
+
+                            ZSTD_decompressDCtx(dctx,
+                                zcache.store.ptr + ulong.sizeof, zcache.store.length - ulong.sizeof,
+                                compressedBlob + ulong.sizeof, cast(size_t)*cast(ulong*)&compressedBlob);
+
+                            // set data origin
+                            *cast(ubyte**)&zcache.store[0 .. ulong.sizeof][0] = (*activeNode)[subIdx].compressedThis;
+
+                            //if (zcache.store.length >= ulong.sizeof)
+                            //    stderr.writefln!"%(%(%02x %)\n####\n%)"(zcache.store[ulong.sizeof * 2 .. $].chunks(NodeType.sizeof));
+
+                            cacheResponse = zcache.query((*activeNode)[subIdx].compressedThis);
+                            assert(cacheResponse !is null);
                         }
 
-                        ZSTD_decompressDCtx(dctx,
-                            zcache.store.ptr + ulong.sizeof, zcache.store.length - ulong.sizeof,
-                            compressedBlob + ulong.sizeof, cast(size_t)*cast(ulong*)&compressedBlob);
-
-                        // set data origin
-                        *cast(ubyte**)&zcache.store[0 .. ulong.sizeof][0] = (*activeNode)[subIdx].compressedThis;
-
-                        //if (zcache.store.length >= ulong.sizeof)
-                        //    stderr.writefln!"%(%(%02x %)\n####\n%)"(zcache.store[ulong.sizeof * 2 .. $].chunks(NodeType.sizeof));
-
-                        cacheResponse = zcache.query((*activeNode)[subIdx].compressedThis);
-                        assert(cacheResponse !is null);
+                        // switch to cache
+                        offsetBase = ulong.sizeof;
+                        nextStep(begin, width, subIdx);
+                        depth += 1;
+                        activeNode = cacheResponse;
+                        continue;
                     }
-
-                    // switch to cache
-                    offsetBase = ulong.sizeof;
-                    nextStep(begin, width, subIdx);
-                    depth += 1;
-                    activeNode = cacheResponse;
-                    continue;
+                    else
+                    {
+                        extract(activeNode, subIdx);
+                        nextStep(begin, width, subIdx);
+                        depth += 1;
+                        activeNode = (*activeNode)[subIdx].thisPtr;
+                        continue;
+                    }
                 }
                 unreachable;
             }
             else
             {
-                if (result == ChildTypes.thisPtr) // in cache we need to calculate the pointer from the stored offset
-                    // storing offsets instead of pointers directly has the advantage of not requiring
-                    //   post processing after decompression and allows reallocation without an intermediate
-                    //   representation change which would also require processing passes
+                static if (zCache)
                 {
-                    assert(width != 3);
-                    nextStep(begin, width, subIdx);
-                    // we want the data to be correctly aligned
-                    assert(cast(ulong)&zcache.store[0] % ulong.sizeof == 0);
-                    assert((*activeNode)[subIdx].thisOffset % ulong.sizeof == 0);
-
-                    activeNode = cast(NodeType*)(&zcache.store
-                        [offsetBase .. $]
-                        [(*activeNode)[subIdx].thisOffset .. $]
-                        [0 .. NodeType.sizeof][0]);
-                    continue;
-                }
-                if (result == ChildTypes.compressedThis)
-                    // instead of discarding all cache, we only discard the mismatching compression branch
-                {
-                    offsetBase = zcache.nextStripBase(offsetBase);
-
-                    ulong compressedBlob = (*activeNode)[subIdx].compressedOffset;
-                    assert(compressedBlob != 0);
-
-                    ulong contentSize = 0;
-
-                    // if the offsets match, we have a cache hit
-                    ulong cachedOffset = *cast(ulong*)zcache.store[offsetBase - ulong.sizeof .. offsetBase][0];
-                    if (cachedOffset == compressedBlob)
+                    if (result == ChildTypes.thisPtr)
+                        // In cache we need to calculate the pointer from the stored offset.
+                        /+ Storing offsets instead of pointers directly has the advantage of not requiring
+                           post processing after decompression and allows reallocation without an intermediate
+                           representation change which would also require processing passes. +/
                     {
-                        activeNode =
-                            cast(NodeType*)&(zcache.store[offsetBase .. $][ulong.sizeof .. $][0 .. NodeType.sizeof][0]);
+                        assert(width != 3);
+                        nextStep(begin, width, subIdx);
+                        // we want the data to be correctly aligned
+                        assert(cast(ulong)&zcache.store[0] % ulong.sizeof == 0);
+                        assert((*activeNode)[subIdx].thisOffset % ulong.sizeof == 0);
+
+                        activeNode = cast(NodeType*)(&zcache.store
+                            [offsetBase .. $]
+                            [(*activeNode)[subIdx].thisOffset .. $]
+                            [0 .. NodeType.sizeof][0]);
+                        continue;
+                    }
+                    if (result == ChildTypes.compressedThis)
+                        // instead of discarding all cache, we only discard the mismatching compression branch
+                    {
+                        offsetBase = zcache.nextStripBase(offsetBase);
+
+                        ulong compressedBlob = (*activeNode)[subIdx].compressedOffset;
+                        assert(compressedBlob != 0);
+
+                        ulong contentSize = 0;
+
+                        // if the offsets match, we have a cache hit
+                        ulong cachedOffset = *cast(ulong*)zcache.store[offsetBase - ulong.sizeof .. offsetBase][0];
+                        if (cachedOffset == compressedBlob)
+                        {
+                            activeNode =
+                                cast(NodeType*)&(zcache.store[offsetBase .. $][ulong.sizeof .. $][0 .. NodeType.sizeof][0]);
+                            nextStep(begin, width, subIdx);
+                            continue;
+                        }
+
+                        // cache miss
+                        contentSize = ZSTD_getFrameContentSize(
+                            &zcache.store[offsetBase + compressedBlob + ulong.sizeof .. $][0],
+                            *cast(ulong*)zcache.store[offsetBase + compressedBlob .. $][0 .. ulong.sizeof][0]);
+                        size_t neededSize = contentSize + ulong.sizeof;
+
+                        if (zcache.store.length < neededSize + ulong.sizeof * 2) // 2*8 bytes zero termination!
+                        {
+                            ptrdiff_t origOffset = cast(void*)activeNode - &zcache.store[0];
+                            if (!sedecAllocator.expandArray(zcache.store, neededSize + ulong.sizeof * 2))
+                                assert(0);
+                            assert(contentSize % ulong.sizeof == 0);
+
+                            // recalculate activeNode pointer since the node might have been relocated
+                            // (commented because the pointer is not needed anymore)
+                            // activeNode = cast(NodeType*)(&zcache.store[0] + activeOffset);
+                        }
+
+                        *cast(ulong*)&zcache.store[offsetBase - ulong.sizeof .. offsetBase][0] = compressedBlob;
+
+                        dctx.ZSTD_decompressDCtx(
+                            &zcache.store[offsetBase .. $][0], zcache.store[offsetBase .. $ - ulong.sizeof].length,
+                            &zcache.store[offsetBase + compressedBlob + ulong.sizeof],
+                            cast(size_t)*cast(ulong*)&zcache.store[offsetBase + compressedBlob .. $][0 .. ulong.sizeof][0]);
+                        activeNode = cast(NodeType*)&zcache.store[offsetBase .. $][0 .. NodeType.sizeof][0];
                         nextStep(begin, width, subIdx);
                         continue;
                     }
-
-                    // cache miss
-                    contentSize = ZSTD_getFrameContentSize(
-                        &zcache.store[offsetBase + compressedBlob + ulong.sizeof .. $][0],
-                        *cast(ulong*)zcache.store[offsetBase + compressedBlob .. $][0 .. ulong.sizeof][0]);
-                    size_t neededSize = contentSize + ulong.sizeof;
-
-                    if (zcache.store.length < neededSize + ulong.sizeof * 2) // 2*8 bytes zero termination!
-                    {
-                        ptrdiff_t origOffset = cast(void*)activeNode - &zcache.store[0];
-                        if (!sedecAllocator.expandArray(zcache.store, neededSize + ulong.sizeof * 2))
-                            assert(0);
-                        assert(contentSize % ulong.sizeof == 0);
-
-                        // recalculate activeNode pointer since the node might have been relocated
-                        // (commented because the pointer is not needed anymore)
-                        // activeNode = cast(NodeType*)(&zcache.store[0] + activeOffset);
-                    }
-
-                    *cast(ulong*)&zcache.store[offsetBase - ulong.sizeof .. offsetBase][0] = compressedBlob;
-
-                    dctx.ZSTD_decompressDCtx(
-                        &zcache.store[offsetBase .. $][0], zcache.store[offsetBase .. $ - ulong.sizeof].length,
-                        &zcache.store[offsetBase + compressedBlob + ulong.sizeof],
-                        cast(size_t)*cast(ulong*)&zcache.store[offsetBase + compressedBlob .. $][0 .. ulong.sizeof][0]);
-                    activeNode = cast(NodeType*)&zcache.store[offsetBase .. $][0 .. NodeType.sizeof][0];
-                    nextStep(begin, width, subIdx);
-                    continue;
+                    unreachable;
                 }
-                unreachable;
             }
             unreachable;
         }
@@ -473,168 +502,185 @@ struct SedecTree(AddressType, alias calc)
 
     bool opIndexAssign(bool val, AddressType i1, AddressType i2)
     {
-        NodeType* activeNode = root;
-        Vector!(AddressType, 2) begin = AddressType.min;
-        AddressType width = AddressType.max;
-        ubyte stackIdx = 0;
+        with (ChildTypes) setPixel(
+            root,
+            Vector!(AddressType, 2)(i1, i2),
+            AddressType.max / 4 + 1,
+            Vector!(AddressType, 2)(0, 0),
+            val ? allTrue : allFalse);
+        return val;
+    }
 
-        while (true)
+
+    Tuple!(Vector!(ulong, 2), "coor", NodeType*, "node") aCache;
+    ubyte aDepth = 0;
+    import std.algorithm : all, among;
+    void setPixel(
+            NodeType* node,
+            Vector!(AddressType, 2) coor,
+            AddressType fWidth,
+            Vector!(AddressType, 2) begin,
+            ChildTypes value)
+        in(node !is null)
+        in(fWidth > 0 && fWidth.isPowerOf2)
+        in(fWidth != 1 || (*node)[].all!(n => !n.type.among(ChildTypes.compressedThis, ChildTypes.thisPtr)))
+    {
+        import core.bitop;
+        enum cacheLevel = 16;
+        static assert(cacheLevel.isPowerOf2);
+
+        if ((coor & (ulong.max << bsf(cacheLevel) + 2)) == aCache.coor)
         {
-            assert((width + 1).isPowerOf2 || width + 1 == 0);
-            assert(width >= 3 && begin % 4 == 0);
-            //auto subIdx = cast(Vector!(ubyte, 2))((Vector!(AddressType, 2)(i1, i2) - begin) / (width / 4 + 1));
-            Vector!(ubyte, 2) subIdx;
+            node = aCache.node;
+            begin = aCache.coor;
+            fWidth = cacheLevel;
+        }
+        start:
+
+        if (fWidth == cacheLevel)
+        {
+            aCache.node = node;
+            aCache.coor = begin;
+        }
+
+
+        import core.bitop : bsf;
+        debug auto should_subIdx = (coor - begin) / fWidth;
+        auto subIdx = (coor - begin) >> bsf(fWidth);
+        debug assert(should_subIdx == subIdx);
+        //stderr.writefln("%s %s %s %s", fWidth, subIdx, begin, coor);
+        if (fWidth == 1)
+        {
+            /* We simply set the value. Since passing a node with references is disallowed by the contract, we never
+               need to free anything. */
+            with (ChildTypes)
+                (*node)[subIdx].type = value;
+            return;
+        }
+        auto type = (*node)[subIdx].type;
+        with (ChildTypes) if (type.among(allTrue, allFalse, pending))
+        {
+            auto newNode = sedecAllocator.make!NodeType;
+            if (newNode is null)
+                assert(0);
+
+            foreach (child; (*newNode)[]) // make it equivalent to the current child
+                 child.type = type;
+
+            (*node)[subIdx].thisPtr = newNode;
+        }
+        else if (type == ChildTypes.compressedThis)
+        {
+            extract(node, subIdx);
+        }
+
+        // by now the relevant field should be switchable to
+        assert((*node)[subIdx].type == ChildTypes.thisPtr);
+
+        node = (*node)[subIdx].thisPtr;
+        begin += fWidth * subIdx;
+        fWidth /= 4;
+        goto start; // ldc2 doesn't optimize the tail call! wtf!
+//        setPixel((*node)[subIdx].thisPtr, coor, fWidth / 4, begin + fWidth * subIdx, value);
+    }
+
+    void extract(V)(NodeType* node, V subIdx)
+        in(subIdx.x < 4)
+        in(subIdx.y < 4)
+        in(node !is null)
+        in((*node)[subIdx].type == ChildTypes.compressedThis)
+        out(;(*node)[subIdx].type == ChildTypes.thisPtr)
+    {
+        dctx.ZSTD_initDStream;
+        ZSTD_inBuffer srcBuf;
+        ZSTD_outBuffer dstBuf;
+
+        ubyte* blob = (*node)[subIdx].compressedThis;
+        srcBuf.src = blob + ulong.sizeof;
+        srcBuf.size = *cast(ulong*)blob;
+        //assert(srcBuf.size >= NodeType.sizeof);
+
+        NodeType*[AddressType.sizeof * 8 / 2] nodeStack;
+        ubyte[AddressType.sizeof * 8 / 2] addrStack;
+        ubyte depth = 0;
+
+        ChildTypes type = ChildTypes.thisPtr;
+        addrStack[depth] = 0;
+        nodeStack[depth] = make!NodeType(sedecAllocator);
+        if (nodeStack[depth] is null)
+            assert(0);
+        dstBuf.dst = nodeStack[depth];
+        dstBuf.size = nodeStack[depth].sizeof;
+        auto status = dctx.ZSTD_decompressStream(&dstBuf, &srcBuf);
+        assert(!ZSTD_isError(status), ZSTD_getErrorName(status).fromStringz);
+        assert(dstBuf.pos == dstBuf.size); // must have written exactly 8 bytes
+        mainLoop: while (true)
+        {
+            while (addrStack[depth] >= 16)
             {
-                import core.bitop;
-                auto tt = Vector!(AddressType, 2)(i1, i2);
-                tt -= begin;
-                //assert(width > 7, format("%s", width));
-                auto divisor = (width / 4 + 1);
-                assert(divisor.isPowerOf2);
-                assert(divisor >= 1, format("%s", divisor));
-                auto tt2 = tt / divisor; // correct reference solution
-                tt >>= bsf(divisor);
-                assert(tt == tt2, format("%s %s", tt, tt2));
-                subIdx = cast(typeof(subIdx))tt;
+                if (depth == 0)
+                    break mainLoop;
+                depth -= 1;
             }
-
-            ChildTypes result = (*activeNode)[subIdx].type;
-
-            if (width == 3)
+            assert(addrStack[depth] < 16);
+            assert(depth < nodeStack.length);
+            type = (*nodeStack[depth])[addrStack[depth]].type;
+            if (type == ChildTypes.allFalse || type == ChildTypes.allTrue || type == ChildTypes.pending)
             {
-                (*activeNode)[subIdx].type = val ? ChildTypes.allTrue : ChildTypes.allFalse;
-                with (ChildTypes) switch ((*activeNode)[subIdx].type)
-                {
-                case allFalse:
-                    return false;
-                case allTrue:
-                    return true;
-                default:
-                    unreachable;
-                }
-            }
-
-            // early exit to avoid degradation of the tree
-            if (result == (val ? ChildTypes.allTrue : ChildTypes.allFalse))
-            {
-                return val;
-            }
-
-            if (result == ChildTypes.allFalse || result == ChildTypes.allTrue || result == ChildTypes.pending)
-            {
-                (*activeNode)[subIdx].thisPtr = make!NodeType(sedecAllocator);
-                activeNode = (*activeNode)[subIdx].thisPtr;
-                foreach (ii; 0 .. 16)
-                {
-                    (*activeNode)[ii].type = result;
-                }
-                nextStep(begin, width, subIdx);
+                addrStack[depth] += 1;
                 continue;
             }
-            if (result == ChildTypes.thisPtr)
+            if (type == ChildTypes.thisPtr)
             {
-                nextStep(begin, width, subIdx);
-                activeNode = (*activeNode)[subIdx].thisPtr;
-                continue;
-            }
-            if (result == ChildTypes.compressedThis)
-            {
-                dctx.ZSTD_initDStream;
-                ZSTD_inBuffer srcBuf;
-                ZSTD_outBuffer dstBuf;
-
-                ubyte* blob = (*activeNode)[subIdx].compressedThis;
-                srcBuf.src = blob + ulong.sizeof;
-                srcBuf.size = *cast(ulong*)blob;
-                //assert(srcBuf.size >= NodeType.sizeof);
-
-                NodeType*[AddressType.sizeof * 8 / 2] nodeStack;
-                ubyte[AddressType.sizeof * 8 / 2] addrStack;
-                ubyte depth = 0;
-
-                ChildTypes type = ChildTypes.thisPtr;
+                addrStack[depth] += 1;
+                depth += 1;
+                assert(depth < addrStack[].length); // last depth mustn't contain thisPtr
                 addrStack[depth] = 0;
                 nodeStack[depth] = make!NodeType(sedecAllocator);
                 if (nodeStack[depth] is null)
                     assert(0);
+
+                // back reference
+                (*nodeStack[depth - 1])[addrStack[depth - 1] - 1].thisPtr = nodeStack[depth];
                 dstBuf.dst = nodeStack[depth];
                 dstBuf.size = nodeStack[depth].sizeof;
-                auto status = dctx.ZSTD_decompressStream(&dstBuf, &srcBuf);
+                dstBuf.pos = 0;
+
+                status = dctx.ZSTD_decompressStream(&dstBuf, &srcBuf);
                 assert(!ZSTD_isError(status), ZSTD_getErrorName(status).fromStringz);
                 assert(dstBuf.pos == dstBuf.size); // must have written exactly 8 bytes
-                mainLoop: while (true)
-                {
-                    while (addrStack[depth] >= 16)
-                    {
-                        if (depth == 0)
-                            break mainLoop;
-                        depth -= 1;
-                    }
-                    assert(addrStack[depth] < 16);
-                    assert(depth < nodeStack.length);
-                    type = (*nodeStack[depth])[addrStack[depth]].type;
-                    if (type == ChildTypes.allFalse || type == ChildTypes.allTrue || type == ChildTypes.pending)
-                    {
-                        addrStack[depth] += 1;
-                        continue;
-                    }
-                    if (type == ChildTypes.thisPtr)
-                    {
-                        addrStack[depth] += 1;
-                        depth += 1;
-                        assert(depth < addrStack[].length); // last depth mustn't contain thisPtr
-                        addrStack[depth] = 0;
-                        nodeStack[depth] = make!NodeType(sedecAllocator);
-                        if (nodeStack[depth] is null)
-                            assert(0);
+                continue;
+            }
+            if (type == ChildTypes.compressedThis)
+            {
+                ulong size;
+                dstBuf.dst = &size;
+                dstBuf.size = ulong.sizeof;
+                dstBuf.pos = 0;
+                dctx.ZSTD_decompressStream(&dstBuf, &srcBuf); // retrieve blob size
+                assert(dstBuf.pos == dstBuf.size);
 
-                        // back reference
-                        (*nodeStack[depth - 1])[addrStack[depth - 1] - 1].thisPtr = nodeStack[depth];
-                        dstBuf.dst = nodeStack[depth];
-                        dstBuf.size = nodeStack[depth].sizeof;
-                        dstBuf.pos = 0;
+                void[] target = makeArray!void(sedecAllocator, size + ulong.sizeof);
+                if (target is null)
+                    assert(0);
+                *cast(ulong*)&target[0 .. ulong.sizeof][0] = size; // place size prefix
+                dstBuf.dst = &target[ulong.sizeof];
+                dstBuf.size = size;
+                assert(size == target[ulong.sizeof .. $].length);
+                dstBuf.pos = 0;
 
-                        status = dctx.ZSTD_decompressStream(&dstBuf, &srcBuf);
-                        assert(!ZSTD_isError(status), ZSTD_getErrorName(status).fromStringz);
-                        assert(dstBuf.pos == dstBuf.size); // must have written exactly 8 bytes
-                        continue;
-                    }
-                    if (type == ChildTypes.compressedThis)
-                    {
-                        ulong size;
-                        dstBuf.dst = &size;
-                        dstBuf.size = ulong.sizeof;
-                        dstBuf.pos = 0;
-                        dctx.ZSTD_decompressStream(&dstBuf, &srcBuf); // retrieve blob size
-                        assert(dstBuf.pos == dstBuf.size);
+                status = dctx.ZSTD_decompressStream(&dstBuf, &srcBuf); // write blob
+                assert(!ZSTD_isError(status), ZSTD_getErrorName(status).fromStringz);
 
-                        void[] target = makeArray!void(sedecAllocator, size + ulong.sizeof);
-                        if (target is null)
-                            assert(0);
-                        *cast(ulong*)target[0 .. ulong.sizeof].ptr = size; // place size prefix
-                        dstBuf.dst = &target[ulong.sizeof];
-                        dstBuf.size = size;
-                        assert(size == target[ulong.sizeof .. $].length);
-                        dstBuf.pos = 0;
+                // reference it
+                (*nodeStack[depth])[addrStack[depth]].compressedThis = cast(ubyte*)dstBuf.dst;
 
-                        status = dctx.ZSTD_decompressStream(&dstBuf, &srcBuf); // write blob
-                        assert(!ZSTD_isError(status), ZSTD_getErrorName(status).fromStringz);
-
-                        // reference it
-                        (*nodeStack[depth])[addrStack[depth]].compressedThis = cast(ubyte*)dstBuf.dst;
-
-                        addrStack[depth] += 1;
-                        continue;
-                    }
-                    unreachable;
-                }
-                sedecAllocator.dispose(blob);
+                addrStack[depth] += 1;
                 continue;
             }
             unreachable;
         }
-        unreachable;
-        return bool.init;
+        sedecAllocator.dispose(blob);
     }
 
     ~this()
@@ -790,8 +836,11 @@ struct SedecTree(AddressType, alias calc)
             if (type == thisPtr)
             {
                 NodeType* orig = (*currNode)[idx].thisPtr;
-                ulong written = pack!freeCopied((*currNode)[idx].thisPtr, dst, pos + occupied);
-                (*currNode)[idx].thisOffset = pos + occupied;
+                ulong written = pack!(freeCopied)((*currNode)[idx].thisPtr, dst, pos + occupied);
+                static if (zCache)
+                    (*currNode)[idx].thisOffset = pos + occupied;
+                else
+                    (*currNode)[idx].thisOffset = 0;
                 occupied += written;
                 static if (freeCopied)
                     sedecAllocator.dispose(orig);
@@ -800,7 +849,10 @@ struct SedecTree(AddressType, alias calc)
             {
                 ubyte* orig = (*currNode)[idx].compressedThis;
                 ulong written = pack!freeCopied((*currNode)[idx].compressedThis, dst, pos + occupied);
-                (*currNode)[idx].compressedOffset = pos + occupied;
+                static if (zCache)
+                    (*currNode)[idx].compressedOffset = pos + occupied;
+                else
+                    (*currNode)[idx].compressedOffset = 0;
                 occupied += written;
                 static if (freeCopied)
                     sedecAllocator.dispose(orig);
@@ -834,78 +886,30 @@ struct SedecTree(AddressType, alias calc)
         return occupied;
     }
 
-    // -1: mixed, 0: all pending, 1: all true, 2: all false
-    int optimize(NodeType* node = root)
+    ChildTypes optimize(NodeType* node = root)
+        in(node !is null)
     {
-        int result;
-        bool manifested = false;
-        foreach (i; 0 .. 16)
+        ChildTypes result = (*node)[0].type; // compressedThis is a catch-all for non-optimizable data here
+        foreach (child; (*node)[])
         {
-            auto ctype = (*node)[i].type;
-            if (ctype == ChildTypes.thisPtr)
+            auto childType = child.type;
+            if (childType == ChildTypes.thisPtr)
             {
-                int r = optimize((*node)[i].thisPtr);
-                if (!manifested)
+                auto equivalentType = optimize(child.thisPtr);
+                with (ChildTypes) if (equivalentType.among(allTrue, allFalse, pending))
                 {
-                    manifested = true;
-                    result = r;
+                    auto garbage = child.thisPtr;
+                    child.type = equivalentType;
+                    sedecAllocator.dispose(garbage);
                 }
-                else if (manifested && result != r)
-                    result = -1;
             }
-            else if (ctype == ChildTypes.compressedThis)
-            {
-                manifested = true;
-                result = -1;
-                continue;
-            }
-            else if (ctype == ChildTypes.pending)
-            {
-                if (!manifested)
-                {
-                    manifested = true;
-                    result = 0;
-                }
-                else if (manifested && result != 0)
-                    result = -1;
-            }
-            else if (ctype == ChildTypes.allFalse)
-            {
-                if (!manifested)
-                {
-                    manifested = true;
-                    result = 2;
-                }
-                else if (manifested && result != 2)
-                     result = -1;
-            }
-            else if (ctype == ChildTypes.allTrue)
-            {
-                if (!manifested)
-                {
-                    manifested = true;
-                    result = 1;
-                }
-                else if (manifested && result != 1)
-                     result = -1;
-            }
-        }
-        if (result >= 0)
-        {
-            foreach (i; 0 .. 16)
-            {
-                auto ctype = (*node)[i].type;
-                if (ctype == ChildTypes.thisPtr)
-                {
-                    sedecAllocator.dispose((*node)[i].thisPtr);
-                }
-                (*node)[i].type = cast(ChildTypes)result;
-            }
+            if (child.type != result)
+                result = ChildTypes.compressedThis;
         }
         return result;
     }
 
-    void compress(V)(NodeType* node, V idx)
+    void compress(Flags...)(NodeType* node, Vector!(ubyte, 2) idx)
         in(node !is null)
         in(idx.x < 4)
         in(idx.y < 4)
@@ -978,7 +982,7 @@ struct SedecTree(AddressType, alias calc)
             assert(dst.length % 8 == 0);
 
             (*node)[idx].compressedThis = dst.ptr;
-            stderr.writefln!"compressed %s bytes down to %s (%s %%)"(packed.length, dst.length,
+            stderr.writefln!"compressed %s bytes down to %s (%5.3s %%)"(formatBytes(packed.length), formatBytes(dst.length),
                 cast(double)dst.length/cast(double)packed.length*100.0);
             // free source buffer
             sedecAllocator.dispose(packed);
@@ -988,8 +992,6 @@ struct SedecTree(AddressType, alias calc)
         unreachable;
     }
 }
-
-alias auie = SedecTree!(uint, e => true);
 
 void printBuf(ubyte[] buf)
 {
@@ -1035,4 +1037,23 @@ int flagValue(Flags...)(string name)
     }
     unreachable;
     return int.min;
+}
+
+
+struct formatBytes
+{
+    static immutable prefixLUT = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
+    ulong value;
+    void toString(W)(W w)
+    {
+        import std.format;
+        double tmp = value;
+        ubyte cnt = 0;
+        while (tmp >= 10_000.0)
+        {
+            cnt += 1;
+            tmp /= 1024;
+        }
+        w.formattedWrite("%5.4s %s", tmp, prefixLUT[cnt]);
+    }
 }

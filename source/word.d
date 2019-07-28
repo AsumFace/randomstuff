@@ -93,7 +93,7 @@ struct WrappingDigit(ulong B = 1)
     }
     private StoreType store;
 
-    auto asInt()
+    StoreType asInt()
     {
         return store;
     }

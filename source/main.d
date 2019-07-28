@@ -14,7 +14,7 @@ void main()
 {
     import sedectree;
 
-    auto tree = sedecTree!(ulong, c => false);
+    auto tree = sedecTree!(ulong, c => false, false);
 
     Vector!(ulong, 2)[] points = new Vector!(ulong, 2)[1000];
 
@@ -34,7 +34,7 @@ void main()
     foreach (i, p; points)
     {
         stderr.writefln!"i%s"(i);
-        auto radius = uniform(50, 201);
+        auto radius = 50;
         bool overflow = false;
         auto xl = checked!Saturate(p.x);
         auto yl = checked!Saturate(p.y);
@@ -42,39 +42,44 @@ void main()
         auto yu = checked!Saturate(p.y);
         xl -= radius;
         yl -= radius;
-        xu += radius;
-        yu += radius;
+        xu += radius + 1;
+        yu += radius + 1;
         auto squaredRadius = radius * radius;
         foreach (y; cast(ulong)yl .. cast(ulong)yu)
         {
             foreach (x; cast(ulong)xl .. cast(ulong)xu)
             {
-                if (y*y + x*x <= squaredRadius)
-                    tree[p] = true;
+                if ((cast(long)(y-p.y))^^2 + (cast(long)(x-p.x))^^2 <= squaredRadius)
+                {
+                    tree[x, y] = true;
+                }
                 else
-                    tree[p] = false;
+                {
+                    tree[x, y] = false;
+                }
             }
         }
     }
     auto dura = MonoTime.currTime - begin;
     stderr.writefln!"time needed: %s"(dura);
 
-    foreach (y; 0 .. 4)
+    foreach (y; checked!Saturate(points[6].y) - 20 .. checked!Saturate(points[6].y) + 20)
     {
-        foreach (x; 0 .. 4)
+        foreach (x; checked!Saturate(points[6].x) - 50 .. checked!Saturate(points[6].x) + 50)
         {
-            writef!"%b"(tree[x, y]);
+            writef!"%b"(tree[cast(ulong)x, cast(ulong)y]);
         }
         writeln;
     }
-    sedecAllocator.reportStatistics(stderr);
+    writefln!"before optimization: %s"(formatBytes(sedecAllocator.bytesUsed));
     tree.optimize(tree.root);
-    sedecAllocator.reportStatistics(stderr);
+    writefln!"after optimization: %s"(formatBytes(sedecAllocator.bytesUsed));
+
     foreach (i; 0 .. 16)
     {
-        tree.compress(tree.root, vec2l(i % 4, i / 4));
+        tree.compress!(Yes.omitOffsets)(tree.root, cast(Vector!(ubyte, 2))vec2l(i % 4, i / 4));
     }
-    sedecAllocator.reportStatistics(stderr);
+    writefln!"after compression: %s"(formatBytes(sedecAllocator.bytesUsed));
     foreach (y; 0 .. 4)
     {
         foreach (x; 0 .. 4)
@@ -100,7 +105,7 @@ void main()
 
 
     //Thread.sleep(500.msecs);
-    sedecAllocator.reportStatistics(stderr);
+    writefln!"after other junk: %s"(formatBytes(sedecAllocator.bytesUsed));
 
     return;
 
@@ -853,3 +858,4 @@ struct ZoomableMap
         assert(posTime <= 1.0);
     }
 }
+

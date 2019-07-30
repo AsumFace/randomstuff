@@ -9,14 +9,16 @@ import required;
 import cgfm.math;
 import std.experimental.checkedint;
 import std.algorithm;
+import std.typecons;
+import std.format;
 
 void main()
 {
     import sedectree;
 
-    auto tree = sedecTree!(ulong, c => false, false);
+    auto tree = sedecTree!(ulong, c => false, true)();
 
-    Vector!(ulong, 2)[] points = new Vector!(ulong, 2)[1000];
+    Vector!(ulong, 2)[] points = new Vector!(ulong, 2)[10000];
 
     foreach (ref e; points[])
     {
@@ -45,41 +47,47 @@ void main()
         xu += radius + 1;
         yu += radius + 1;
         auto squaredRadius = radius * radius;
+        long ticks;
+
         foreach (y; cast(ulong)yl .. cast(ulong)yu)
         {
             foreach (x; cast(ulong)xl .. cast(ulong)xu)
             {
-                if ((cast(long)(y-p.y))^^2 + (cast(long)(x-p.x))^^2 <= squaredRadius)
-                {
-                    tree[x, y] = true;
-                }
-                else
-                {
-                    tree[x, y] = false;
-                }
+                bool value = (cast(long)(y-p.y))^^2 + (cast(long)(x-p.x))^^2 <= squaredRadius;
+                tree[x, y] = value;
             }
         }
     }
     auto dura = MonoTime.currTime - begin;
     stderr.writefln!"time needed: %s"(dura);
 
-    foreach (y; checked!Saturate(points[6].y) - 20 .. checked!Saturate(points[6].y) + 20)
+    /+foreach (y; checked!Saturate(points[0].y) - 20 .. checked!Saturate(points[0].y) + 20)
     {
-        foreach (x; checked!Saturate(points[6].x) - 50 .. checked!Saturate(points[6].x) + 50)
+        foreach (x; checked!Saturate(points[0].x) - 50 .. checked!Saturate(points[0].x) + 50)
         {
             writef!"%b"(tree[cast(ulong)x, cast(ulong)y]);
         }
         writeln;
-    }
-    writefln!"before optimization: %s"(formatBytes(sedecAllocator.bytesUsed));
-    tree.optimize(tree.root);
-    writefln!"after optimization: %s"(formatBytes(sedecAllocator.bytesUsed));
-
-    foreach (i; 0 .. 16)
+    }+/
+    foreach (x; 0 .. 4)
     {
-        tree.compress!(Yes.omitOffsets)(tree.root, cast(Vector!(ubyte, 2))vec2l(i % 4, i / 4));
+        tree[3-x, x] = true;
     }
-    writefln!"after compression: %s"(formatBytes(sedecAllocator.bytesUsed));
+
+    tree.optimize(tree.root);
+    //tree._print(tree.root);
+    foreach (i; 0 .. 1)
+    {
+        foreach (ii; 0 .. 1)
+        {
+            tree.compress(tree.root, cast(Vector!(ubyte, 2))vec2l(ii%4, ii/4));
+        }
+        foreach (ii; 0 .. 1)
+        {
+            tree.extract(tree.root, cast(Vector!(ubyte, 2))vec2l(ii%4, ii/4));
+        }
+    }
+
     foreach (y; 0 .. 4)
     {
         foreach (x; 0 .. 4)
@@ -88,6 +96,7 @@ void main()
         }
         writeln;
     }
+
     foreach (x; 0 .. 4)
     {
         tree[x, x] = true;
@@ -102,10 +111,11 @@ void main()
         writeln;
     }
 
-
+    //tree._print(tree.root);
 
     //Thread.sleep(500.msecs);
-    writefln!"after other junk: %s"(formatBytes(sedecAllocator.bytesUsed));
+
+    tree.recursiveFree(tree.root);
 
     return;
 

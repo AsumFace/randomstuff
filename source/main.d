@@ -54,13 +54,14 @@ void main()
             foreach (x; cast(ulong)xl .. cast(ulong)xu)
             {
                 bool value = (cast(long)(y-p.y))^^2 + (cast(long)(x-p.x))^^2 <= squaredRadius;
-                tree[x, y] = value;
+                    tree[x, y] = value ? ChildTypes.allTrue : ChildTypes.allFalse;
             }
         }
     }
+    statfile.close;
     auto dura = MonoTime.currTime - begin;
     stderr.writefln!"time needed: %s"(dura);
-
+    assert(0);
     /+foreach (y; checked!Saturate(points[0].y) - 20 .. checked!Saturate(points[0].y) + 20)
     {
         foreach (x; checked!Saturate(points[0].x) - 50 .. checked!Saturate(points[0].x) + 50)
@@ -71,7 +72,7 @@ void main()
     }+/
     foreach (x; 0 .. 4)
     {
-        tree[3-x, x] = true;
+        tree[3-x, x] = ChildTypes.allTrue;
     }
 
     tree.optimize(tree.root);
@@ -88,9 +89,9 @@ void main()
         }
     }
 
-    foreach (y; 0 .. 4)
+    foreach (y; 0 .. 40)
     {
-        foreach (x; 0 .. 4)
+        foreach (x; 0 .. 120)
         {
             writef!"%b"(tree[x, y]);
         }
@@ -99,12 +100,12 @@ void main()
 
     foreach (x; 0 .. 4)
     {
-        tree[x, x] = true;
+        tree[x, x] = ChildTypes.allTrue;
     }
 
-    foreach (y; 0 .. 4)
+    foreach (y; 0 .. 40)
     {
-        foreach (x; 0 .. 4)
+        foreach (x; 0 .. 120)
         {
             writef!"%b"(tree[x, y]);
         }

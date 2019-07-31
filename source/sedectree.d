@@ -22,6 +22,14 @@ struct AllocInfo
 static assert(size_t.sizeof <= ulong.sizeof,
      "platforms with more than 64 bit address space aren't supported :p");
 
+enum FillValue
+{
+    none = 0,
+    allTrue = 1,
+    allFalse = 2,
+    mixed = -1
+}
+
 enum ChildTypes
 {
     pending = 0b0000,
@@ -126,7 +134,7 @@ struct SedecNode(AddressType)
 
     auto opIndex(ulong x, ulong y)
     {
-        return opIndex(vec2l(x, y));
+        return opIndex(vec2ul(x, y));
     }
 
     auto opIndex(V)(V v)
@@ -322,7 +330,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
 
 
 
-    bool opIndex(AddressType i1, AddressType i2)
+    ChildTypes opIndex(AddressType i1, AddressType i2)
     {
         import std.math;
         int depth = 0;
@@ -360,13 +368,11 @@ struct SedecTree(AddressType, alias calc, bool zCache)
             ChildTypes result = (*activeNode)[subIdx].type;
 
             if (result == ChildTypes.pending)
-            {
-                return calc(Vector!(AddressType, 2)(i1, i2));
-            }
+                return result;
             if (result == ChildTypes.allFalse)
-                return false;
+                return result;
             if (result == ChildTypes.allTrue)
-                return true;
+                return result;
             if (offsetBase == 0)
             {
                 if (result == ChildTypes.thisPtr) // just jump into the next lower division and repeat
@@ -544,19 +550,19 @@ struct SedecTree(AddressType, alias calc, bool zCache)
         sedecAllocator.dispose(node);
     }
 
-    bool opIndexAssign(V)(bool val, V v)
+    ChildTypes opIndexAssign(V)(ChildTypes val, V v)
     {
         return opIndexAssign(val, v.x, v.y);
     }
 
-    bool opIndexAssign(bool val, AddressType i1, AddressType i2)
+    ChildTypes opIndexAssign(ChildTypes val, AddressType i1, AddressType i2)
     {
         with (ChildTypes) setPixel(
             root,
             Vector!(AddressType, 2)(i1, i2),
             AddressType.max / 4 + 1,
             Vector!(AddressType, 2)(0, 0),
-            val ? allTrue : allFalse);
+            val);
         return val;
     }
 
@@ -583,6 +589,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
             node = aCache.node;
             begin = aCache.coor;
             fWidth = cacheLevel;
+            goto skipCacheUpdate;
         }
         start:
 
@@ -591,13 +598,17 @@ struct SedecTree(AddressType, alias calc, bool zCache)
             aCache.node = node;
             aCache.coor = begin;
         }
+        skipCacheUpdate:
 
 
         import core.bitop : bsf;
+        import std.algorithm;
         debug auto should_subIdx = (coor - begin) / fWidth;
-        auto subIdx = (coor - begin) >> bsf(fWidth);
+        Vector!(AddressType, 2) subIdx = (coor - begin) >> bsf(fWidth);
         debug assert(should_subIdx == subIdx);
         //stderr.writefln("%s %s %s %s", fWidth, subIdx, begin, coor);
+        import ldc.intrinsics;
+        llvm_expect(fWidth == 1, false);
         if (fWidth == 1)
         {
             /* We simply set the value. Since passing a node with references is disallowed by the contract, we never
@@ -610,14 +621,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
         auto type = (*node)[subIdx].type;
         with (ChildTypes) if (type.among(allTrue, allFalse, pending))
         {
-            auto newNode = sedecAllocator.make!NodeType;
-            if (newNode is null)
-                assert(0);
-
-            foreach (child; (*newNode)[]) // make it equivalent to the current child
-                 child.type = type;
-
-            (*node)[subIdx].thisPtr = newNode;
+            subdivide(node, subIdx);
         }
         else if (type == ChildTypes.compressedThis)
         {
@@ -632,6 +636,20 @@ struct SedecTree(AddressType, alias calc, bool zCache)
         fWidth /= 4;
         goto start; // ldc2 doesn't optimize the tail call! wtf!
 //        setPixel((*node)[subIdx].thisPtr, coor, fWidth / 4, begin + fWidth * subIdx, value);
+    }
+
+    void subdivide(V)(NodeType* node, V subIdx)
+        in((*node)[subIdx].type.among(ChildTypes.allTrue, ChildTypes.allFalse, ChildTypes.pending))
+        out(;(*node)[subIdx].type == ChildTypes.thisPtr)
+    {
+        auto newNode = sedecAllocator.make!NodeType;
+        if (newNode is null)
+            assert(0);
+
+        foreach (child; (*newNode)[]) // make it equivalent to the current child
+             child.type = (*node)[subIdx].type;
+
+        (*node)[subIdx].thisPtr = newNode;
     }
 
     void extract(V)(NodeType* node, V subIdx)
@@ -1075,6 +1093,94 @@ struct SedecTree(AddressType, alias calc, bool zCache)
         }
         unreachable;
     }
+
+    void rectangleFill(
+            Vector!(AddressType, 2) low,
+            Vector!(AddressType, 2) high, // inclusive bound
+            FillValue val)
+        in(low.x <= high.x)
+        in(low.y <= high.y)
+    {
+        struct Rectangle
+        {
+            immutable(Vector!(AddressType, 2)) low;
+            immutable(Vector!(AddressType, 2)) high;
+            immutable(FillValue) result;
+            this(Vector!(AddressType, 2) low, Vector!(AddressType, 2) high, FillValue val)
+            {
+                this.low = low;
+                this.high = high;
+                result = val;
+            }
+            FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+            {
+                import std.range : lockstep, zip;
+                import std.algorithm : fold, any;
+                Vector!(AddressType, 2)[4] corners;
+                corners[0] = low;
+                corners[1] = high;
+                corners[2] = Vector!(AddressType, 2)(low.x + fWidth - 1, low.y);
+                corners[3] = Vector!(AddressType, 2)(low.x, low.y + fWidth - 1);
+
+                bool[4] compares;
+                foreach (ref cmpR, corner; lockstep(compares[], corners[]))
+                {
+                    cmpR = zip(corner[], low[], high[]).fold!((p, x) => p && x[0] >= x[1] && x[0] <= x[2])(true);
+                }
+                if (compares[1 .. $].any!(n => n != compares[0]))
+                    return FillValue.mixed;
+                else
+                {
+                    if (compares[0] == true)
+                        return cast(FillValue)result;
+                    else
+                        return FillValue.none;
+                }
+            }
+        }
+        genericFill(Rectangle(low, high, val));
+    }
+
+    void genericFill(F)(F testFun)
+        if (isCallable!F)
+    {
+        aCache.node = null; // this function might invalidate cache
+        genericFill(root, AddressType.max / 4 + 1, vec2ul(0, 0), testFun);
+    }
+
+    void genericFill(F)(NodeType* node, AddressType fWidth, Vector!(AddressType, 2) begin, F testFun)
+    {
+        foreach (i; 0 .. 16)
+        {
+            auto subIdx = Vector!(AddressType, 2)(fWidth * (i % 4), fWidth * (i / 4));
+            auto subBegin = begin + fWidth * subIdx;
+            auto result = testFun(fWidth, subBegin);
+            if (fWidth == 1)
+                assert(result >= 0);
+            auto type = (*node)[subIdx].type;
+            if (result < 0) // block is not completely filled
+            {
+                with (ChildTypes) if (type.among(allTrue, allFalse, pending))
+                    subdivide(node, subIdx);
+                else if (type == compressedThis)
+                    extract(node, subIdx);
+                genericFill(node, fWidth / 4, subBegin, testFun);
+            }
+            else
+            {
+                void* garbage;
+                if (type == ChildTypes.thisPtr)
+                    garbage = (*node)[subIdx].thisPtr;
+                else if (type == ChildTypes.compressedThis)
+                    garbage = (*node)[subIdx].compressedThis;
+
+                (*node)[subIdx].type = cast(ChildTypes)result;
+
+                if (garbage !is null)
+                    sedecAllocator.dispose(garbage);
+            }
+        }
+    }
 }
 
 void printBuf(ubyte[] buf)
@@ -1084,11 +1190,9 @@ void printBuf(ubyte[] buf)
     writefln!"[%s%(%02x %)]"(buf.length > 400 ? "… " : "", buf.take(400));
 }
 
-ubyte[] objcpy(T)(auto ref T src, ubyte[] dst, ulong ll = __LINE__)
+ubyte[] objcpy(T)(auto ref T src, ubyte[] dst)
     in(T.sizeof <= dst[].length)
 {
-import std.conv;
-    //stderr.writefln("%s written to %x (%d) %s", src, cast(size_t)dst.ptr, T.sizeof, ll);
     dst[0 .. T.sizeof] = *(cast(ubyte[T.sizeof]*)&src);
     return dst[T.sizeof .. $];
 }

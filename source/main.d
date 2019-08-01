@@ -18,7 +18,7 @@ void main()
 
     auto tree = sedecTree!(ulong, c => false, true)();
 
-    Vector!(ulong, 2)[] points = new Vector!(ulong, 2)[10000];
+    Vector!(ulong, 2)[] points = new Vector!(ulong, 2)[100];
 
     foreach (ref e; points[])
     {
@@ -54,14 +54,12 @@ void main()
             foreach (x; cast(ulong)xl .. cast(ulong)xu)
             {
                 bool value = (cast(long)(y-p.y))^^2 + (cast(long)(x-p.x))^^2 <= squaredRadius;
-                    tree[x, y] = value ? ChildTypes.allTrue : ChildTypes.allFalse;
+                tree[x, y] = value ? ChildTypes.allTrue : ChildTypes.allFalse;
             }
         }
     }
-    statfile.close;
     auto dura = MonoTime.currTime - begin;
     stderr.writefln!"time needed: %s"(dura);
-    assert(0);
     /+foreach (y; checked!Saturate(points[0].y) - 20 .. checked!Saturate(points[0].y) + 20)
     {
         foreach (x; checked!Saturate(points[0].x) - 50 .. checked!Saturate(points[0].x) + 50)
@@ -70,9 +68,9 @@ void main()
         }
         writeln;
     }+/
-    foreach (x; 0 .. 4)
+    foreach (x; 0 .. 40)
     {
-        tree[3-x, x] = ChildTypes.allTrue;
+        tree[39-x, x] = ChildTypes.allTrue;
     }
 
     tree.optimize(tree.root);
@@ -93,24 +91,31 @@ void main()
     {
         foreach (x; 0 .. 120)
         {
-            writef!"%b"(tree[x, y]);
+            writef!"%d"(tree[x, y]);
         }
         writeln;
     }
 
-    foreach (x; 0 .. 4)
+    foreach (x; 0 .. 40)
     {
         tree[x, x] = ChildTypes.allTrue;
     }
+    writeln;
 
-    foreach (y; 0 .. 40)
+    foreach (i; 0 .. 10)
+    {
+        tree.rectangleFill(vec2ul(5, 5) +i, vec2ul(120 - 6, 40 - 6) -i, cast(FillValue)(i % 2 + 1));
+    }
+
+
+    /+foreach (y; 0 .. 40)
     {
         foreach (x; 0 .. 120)
         {
-            writef!"%b"(tree[x, y]);
+            writef!"%d"(tree[x, y]);
         }
         writeln;
-    }
+    }+/
 
     //tree._print(tree.root);
 

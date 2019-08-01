@@ -1112,30 +1112,51 @@ struct SedecTree(AddressType, alias calc, bool zCache)
                 this.high = high;
                 result = val;
             }
+
             FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+            //    out(r; fWidth != 1 && (r == FillValue.mixed || r == FillValue.none)
+            //        || r == FillValue.allTrue && begin == vec2ul(10,10)
+            //        || r == FillValue.none)
             {
                 import std.range : lockstep, zip;
                 import std.algorithm : fold, any;
-                Vector!(AddressType, 2)[4] corners;
-                corners[0] = low;
-                corners[1] = high;
-                corners[2] = Vector!(AddressType, 2)(low.x + fWidth - 1, low.y);
-                corners[3] = Vector!(AddressType, 2)(low.x, low.y + fWidth - 1);
-
-                bool[4] compares;
-                foreach (ref cmpR, corner; lockstep(compares[], corners[]))
+                alias V = Vector!(AddressType, 2);
+                /+V[4] fcorners;
+                fcorners[0] = V(begin.x, begin.y);
+                fcorners[1] = V(begin.x, begin.y + fWidth - 1);
+                fcorners[2] = V(begin.x + fWidth - 1, begin.y + fWidth - 1);
+                fcorners[3] = V(begin.x + fWidth - 1, begin.y);
+                V[4] bcorners;
+                bcorners[0] = V(low.x, low.y);
+                bcorners[1] = V(low.x, high.y);
+                bcorners[2] = V(high.x, high.y);
+                bcorners[3] = V(high.x, low.y);
+                +/
+                bool outside = false;
+                if (low.x > begin.x + fWidth - 1)
+                    outside = true;
+                if (high.x < begin.x)
+                    outside = true;
+                if (low.y > begin.y + fWidth - 1)
+                    outside = true;
+                if (high.y < begin.y)
+                    outside = true;
+                if (outside)
                 {
-                    cmpR = zip(corner[], low[], high[]).fold!((p, x) => p && x[0] >= x[1] && x[0] <= x[2])(true);
+                    return FillValue.none;
                 }
-                if (compares[1 .. $].any!(n => n != compares[0]))
-                    return FillValue.mixed;
-                else
+                bool enclosed = true;
+                if (!(low.x <= begin.x && high.x >= begin.x + fWidth - 1))
+                    enclosed = false;
+                if (!(low.y <= begin.y && high.y >= begin.y + fWidth - 1))
+                    enclosed = false;
+                if (enclosed)
                 {
-                    if (compares[0] == true)
-                        return cast(FillValue)result;
-                    else
-                        return FillValue.none;
+                    assert(begin.y > 0);
+                    return result;
                 }
+                assert(fWidth > 1);
+                return FillValue.mixed;
             }
         }
         genericFill(Rectangle(low, high, val));
@@ -1152,9 +1173,10 @@ struct SedecTree(AddressType, alias calc, bool zCache)
     {
         foreach (i; 0 .. 16)
         {
-            auto subIdx = Vector!(AddressType, 2)(fWidth * (i % 4), fWidth * (i / 4));
+            auto subIdx = Vector!(AddressType, 2)(i % 4, i / 4);
             auto subBegin = begin + fWidth * subIdx;
             auto result = testFun(fWidth, subBegin);
+
             if (fWidth == 1)
                 assert(result >= 0);
             auto type = (*node)[subIdx].type;
@@ -1164,9 +1186,9 @@ struct SedecTree(AddressType, alias calc, bool zCache)
                     subdivide(node, subIdx);
                 else if (type == compressedThis)
                     extract(node, subIdx);
-                genericFill(node, fWidth / 4, subBegin, testFun);
+                genericFill((*node)[subIdx].thisPtr, fWidth / 4, subBegin, testFun);
             }
-            else
+            else if (result > 0) // block is filled
             {
                 void* garbage;
                 if (type == ChildTypes.thisPtr)
@@ -1178,6 +1200,24 @@ struct SedecTree(AddressType, alias calc, bool zCache)
 
                 if (garbage !is null)
                     sedecAllocator.dispose(garbage);
+
+                foreach (y; 0 .. 40)
+                {
+                    foreach (x; 0 .. 120)
+                    {
+                        import std.algorithm;
+                        if (x >= subBegin.x && y >= subBegin.y && x <= subBegin.x + fWidth - 1 && y <= subBegin.y + fWidth - 1)
+                            writef!"\x1B[46m%s"(this[x, y].predSwitch(0, "░", 1, "N", 2, " ", "X"));
+                        else if (x >= begin.x && y >= begin.y && x <= begin.x + fWidth * 4 - 1 && y <= begin.y + fWidth * 4 - 1)
+                            writef!"\x1B[47m%s"(this[x, y].predSwitch(0, "░", 1, "N", 2, " ", "X"));
+                        else
+                            writef!"\x1B[0m%s"(this[x, y].predSwitch(0, "░", 1, "N", 2, " ", "X"));
+                    }
+                    write("\x1B[0m\n");
+                }
+                writeln();
+                import core.thread;
+                Thread.sleep(20.msecs);
             }
         }
     }

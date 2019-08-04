@@ -68,10 +68,10 @@ void main()
         }
         writeln;
     }+/
-    foreach (x; 0 .. 40)
+    /+foreach (x; 0 .. 40)
     {
         tree[39-x, x] = ChildTypes.allTrue;
-    }
+    }+/
 
     tree.optimize(tree.root);
     //tree._print(tree.root);
@@ -87,25 +87,26 @@ void main()
         }
     }
 
-    foreach (y; 0 .. 40)
+    /+foreach (y; 0 .. 40)
     {
         foreach (x; 0 .. 120)
         {
             writef!"%d"(tree[x, y]);
         }
         writeln;
-    }
+    }+/
 
-    foreach (x; 0 .. 40)
+    /+foreach (x; 0 .. 40)
     {
         tree[x, x] = ChildTypes.allTrue;
-    }
+    }+/
     writeln;
 
-    foreach (i; 0 .. 10)
+
+    /+foreach (i; 0 .. 10)
     {
-        tree.rectangleFill(vec2ul(5, 5) +i, vec2ul(120 - 6, 40 - 6) -i, cast(FillValue)(i % 2 + 1));
-    }
+        tree.rectangleFill(vec2ul(0, 0) +i, vec2ul(119, 39) +i, cast(FillValue)(i % 2 + 1));
+    }+/
 
 
     /+foreach (y; 0 .. 40)
@@ -121,10 +122,6 @@ void main()
 
     //Thread.sleep(500.msecs);
 
-    tree.recursiveFree(tree.root);
-
-    return;
-
     import std.datetime;
     if (glfwInit == false)
         assert(0, "GLFW initialization failed");
@@ -137,8 +134,8 @@ void main()
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     glfwWindowHint(GLFW_DOUBLEBUFFER, GL_TRUE);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    int width = 800;
-    int height = 600;
+    int width = 1500;
+    int height = 1000;
     GLFWwindow* window = glfwCreateWindow(width, height, "NanoVega Test", null, null);
     if (window is null)
         assert(0, "GLFW window creation failure");
@@ -147,7 +144,7 @@ void main()
     scope(exit) glfwDestroyWindow(window);
     glfwMakeContextCurrent(window);
     glfwSetInputMode(window, GLFW_STICKY_MOUSE_BUTTONS, GLFW_TRUE);
-    glfwSwapInterval(1);
+    //glfwSwapInterval(1);
     NVGContext nvg = nvgCreateContext();
     loadOpenGL();
     scope(exit) nvg.kill;
@@ -176,7 +173,27 @@ void main()
     window.glfwSetKeyCallback(&keyCallback);
 
 
+            nvg.beginFrame(width, height);
+            scope(exit) nvg.endFrame();
+import arsd.color;
+            auto canvas = MemoryImage.fromImageFile("/tmp/test.png");
+            auto img = nvg.createImageFromMemoryImage(canvas);
 
+        tree.target = canvas;
+        tree.img = img;
+        tree.nvg = nvg;
+        tree.window = window;
+
+        auto body1 = tree.Circle(vec2ul(1500,1000), 800, FillValue.allTrue);
+        auto body2 = tree.Rectangle(vec2ul(200, 600), vec2ul(3000-200, 2000-600), FillValue.allTrue);
+
+        tree.unionFill(body2, &body1);
+            //tree.rectangleFill(vec2ul(200, 600), vec2ul(3000-200, 2000-600), FillValue.allTrue);
+            //tree.circleFill(vec2ul(1500,1000), 800, FillValue.allTrue);
+
+
+
+    assert(0);
     Button!(false) a;
     ZoomableMap b;
     b.bg = createImage(nvg, "/tmp/test.png", NVGImageFlag.GenerateMipmaps, NVGImageFlag.NoFiltering);

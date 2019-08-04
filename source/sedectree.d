@@ -366,7 +366,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
             //stderr.writefln("w%s d%s %s", width, depth, (*activeNode).toString);
             assert(activeNode !is null);
             ChildTypes result = (*activeNode)[subIdx].type;
-
+            ldep = depth;
             if (result == ChildTypes.pending)
                 return result;
             if (result == ChildTypes.allFalse)
@@ -1094,6 +1094,48 @@ struct SedecTree(AddressType, alias calc, bool zCache)
         unreachable;
     }
 
+    static struct Rectangle
+    {
+        enum isSolidBody = true;
+        Vector!(AddressType, 2) low;
+        Vector!(AddressType, 2) high;
+        FillValue result;
+        this(Vector!(AddressType, 2) low, Vector!(AddressType, 2) high, FillValue val)
+        {
+            this.low = low;
+            this.high = high;
+            result = val;
+        }
+
+        FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+        {
+            bool outside = false;
+            if (low.x > begin.x + fWidth - 1)
+                outside = true;
+            if (high.x < begin.x)
+                outside = true;
+            if (low.y > begin.y + fWidth - 1)
+                outside = true;
+            if (high.y < begin.y)
+                outside = true;
+            if (outside)
+            {
+                return FillValue.none;
+            }
+            bool enclosed = true;
+            if (!(low.x <= begin.x && high.x >= begin.x + fWidth - 1))
+                enclosed = false;
+            if (!(low.y <= begin.y && high.y >= begin.y + fWidth - 1))
+                enclosed = false;
+            if (enclosed)
+            {
+                return result;
+            }
+            assert(fWidth > 1);
+            return FillValue.mixed;
+        }
+    }
+
     void rectangleFill(
             Vector!(AddressType, 2) low,
             Vector!(AddressType, 2) high, // inclusive bound
@@ -1101,84 +1143,169 @@ struct SedecTree(AddressType, alias calc, bool zCache)
         in(low.x <= high.x)
         in(low.y <= high.y)
     {
-        struct Rectangle
-        {
-            immutable(Vector!(AddressType, 2)) low;
-            immutable(Vector!(AddressType, 2)) high;
-            immutable(FillValue) result;
-            this(Vector!(AddressType, 2) low, Vector!(AddressType, 2) high, FillValue val)
-            {
-                this.low = low;
-                this.high = high;
-                result = val;
-            }
 
-            FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
-            //    out(r; fWidth != 1 && (r == FillValue.mixed || r == FillValue.none)
-            //        || r == FillValue.allTrue && begin == vec2ul(10,10)
-            //        || r == FillValue.none)
-            {
-                import std.range : lockstep, zip;
-                import std.algorithm : fold, any;
-                alias V = Vector!(AddressType, 2);
-                /+V[4] fcorners;
-                fcorners[0] = V(begin.x, begin.y);
-                fcorners[1] = V(begin.x, begin.y + fWidth - 1);
-                fcorners[2] = V(begin.x + fWidth - 1, begin.y + fWidth - 1);
-                fcorners[3] = V(begin.x + fWidth - 1, begin.y);
-                V[4] bcorners;
-                bcorners[0] = V(low.x, low.y);
-                bcorners[1] = V(low.x, high.y);
-                bcorners[2] = V(high.x, high.y);
-                bcorners[3] = V(high.x, low.y);
-                +/
-                bool outside = false;
-                if (low.x > begin.x + fWidth - 1)
-                    outside = true;
-                if (high.x < begin.x)
-                    outside = true;
-                if (low.y > begin.y + fWidth - 1)
-                    outside = true;
-                if (high.y < begin.y)
-                    outside = true;
-                if (outside)
-                {
-                    return FillValue.none;
-                }
-                bool enclosed = true;
-                if (!(low.x <= begin.x && high.x >= begin.x + fWidth - 1))
-                    enclosed = false;
-                if (!(low.y <= begin.y && high.y >= begin.y + fWidth - 1))
-                    enclosed = false;
-                if (enclosed)
-                {
-                    assert(begin.y > 0);
-                    return result;
-                }
-                assert(fWidth > 1);
-                return FillValue.mixed;
-            }
-        }
         genericFill(Rectangle(low, high, val));
+    }
+
+    static struct Circle
+    {
+        enum isSolidBody = true;
+        Vector!(AddressType, 2) center;
+        AddressType radius;
+        FillValue result;
+        this(Vector!(AddressType, 2) center, AddressType radius, FillValue val)
+        {
+            this.center = center;
+            this.radius = radius;
+            result = val;
+        }
+
+        FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+        {
+            import std.algorithm;
+            alias V = Vector!(Signed!AddressType, 2);
+            V[4] fCorners;
+            fCorners[0] = begin;
+            fCorners[1] = V(begin.x, begin.y + fWidth);
+            fCorners[2] = begin + fWidth;
+            fCorners[3] = V(begin.x + fWidth, begin.y);
+            //fCorners[].each!((ref e) => e -= center);
+            foreach (ref c; fCorners[])
+                c -= center;
+            int nContained = 0;
+            foreach (v; fCorners[])
+            {
+                import std.bigint;
+                auto sqDistance = v[].fold!((a, b) => a + BigInt(b) ^^ 2)(BigInt(0));
+                auto contained = sqDistance <= BigInt(radius) ^^ 2;
+                if (contained)
+                    nContained += 1;
+            }
+            //writefln("fCorners: %s; nContained: %s", fCorners[], nContained);
+            if (nContained == 4)
+                return result;
+            if (fWidth == 1)
+            {
+                if (nContained >= 2)
+                    return result;
+                else
+                    return FillValue.none;
+            }
+            if (nContained > 0)
+                return FillValue.mixed;
+
+            V[4] bCorners;
+            bCorners[0] = center - radius;
+            bCorners[1] = V(center.x - radius, center.y + radius);
+            bCorners[2] = center + radius;
+            bCorners[3] = V(center.x + radius, center.y - radius);
+
+            bool xCrosses0 = fCorners[0].x <= 0 && fCorners[2].x >= 0;
+            bool yCrosses0 = fCorners[0].y <= 0 && fCorners[2].y >= 0;
+            bool ySecant = fCorners[0].y >= bCorners[0].y && fCorners[0].y <= bCorners[2].y
+                           || fCorners[2].y >= bCorners[0].y && fCorners[2].y <= bCorners[2].y;
+            bool xSecant = fCorners[0].x >= bCorners[0].x && fCorners[0].x <= bCorners[2].x
+                           || fCorners[2].x >= bCorners[0].x && fCorners[2].x <= bCorners[2].x;
+
+            if (xCrosses0 && xSecant)
+                return FillValue.mixed;
+            if (yCrosses0 && ySecant)
+                return FillValue.mixed;
+            if (yCrosses0 && xCrosses0)
+                return FillValue.mixed;
+            return FillValue.none;
+        }
+    }
+
+    void circleFill(
+        Vector!(AddressType, 2) center,
+        AddressType radius,
+        FillValue val)
+    {
+        genericFill(Circle(center, radius, val));
     }
 
     void genericFill(F)(F testFun)
         if (isCallable!F)
     {
+        fillCost = 0;
+        filledPixels = 0;
         aCache.node = null; // this function might invalidate cache
         genericFill(root, AddressType.max / 4 + 1, vec2ul(0, 0), testFun);
     }
-
+    ulong fillCost;
+    ulong filledPixels;
+    import arsd.nanovega;
+    import arsd.color;
+    import bindbc.opengl;
+    import bindbc.glfw;
+    NVGImage img;
+    MemoryImage target;
+    NVGContext nvg;
+    GLFWwindow* window;
+    ulong cnt;
+    int ldep;
     void genericFill(F)(NodeType* node, AddressType fWidth, Vector!(AddressType, 2) begin, F testFun)
     {
+        import std.random;
+        import std.range;
         foreach (i; 0 .. 16)
         {
+            fillCost += 1;
             auto subIdx = Vector!(AddressType, 2)(i % 4, i / 4);
             auto subBegin = begin + fWidth * subIdx;
             auto result = testFun(fWidth, subBegin);
 
+            import arsd.color;
+            void draw(int col)
+            {
+                import core.bitop;
+                glClearColor(0, 0, 0, 0);
+                glClear(glNVGClearFlags);
+                import std.algorithm : predSwitch;
+                foreach (y; 0 .. target.height)
+                {
+                    foreach (x; 0 .. target.width)
+                    {
+                        if (!(x >= begin.x && x <= begin.x + fWidth * 4 - 1 && y >= begin.y && y <= begin.y + fWidth * 4 - 1))
+                            continue;
+                        import std.algorithm;
+                        Color baseColor = this[x, y].predSwitch(0, Color.gray, 1,
+                            fromHsl((ldep + 1) / 32.0, 255, 100),
+                            2, Color.black, Color.purple);
+                        if (x >= subBegin.x && y >= subBegin.y && x <= subBegin.x + fWidth - 1 && y <= subBegin.y + fWidth - 1)
+                            baseColor = Color.red;
+                        else if ((x == begin.x || y == begin.y || x == begin.x + fWidth * 4 - 1 || y == begin.y + fWidth * 4 - 1)
+                            && (x >= begin.x && x <= begin.x + fWidth * 4 - 1 && y >= begin.y && y <= begin.y + fWidth * 4 - 1))
+                            baseColor = Color.green;
+                        target.setPixel(x, y, baseColor);
+                    }
+                }
+                //if (fWidth > 16)
+                {
+                nvg.beginFrame(1500, 1000);
+                img = nvg.createImageFromMemoryImage(target);
+                nvg.beginPath();
+                nvg.rect(0, 0, 1500, 1000);
+                nvg.fillPaint = nvg.imagePattern(0, 0, 1500, 1000, 0, img);
+                nvg.fill();
+
+                nvg.endFrame;
+                import arsd.png;
+                glfwSwapBuffers(window);
+                glFinish();
+                }import core.bitop;
+                writefln("depth: %s; fillCost: %s; filledPixels: %s",
+                    (AddressType.sizeof * 8 / 2) - bsf(fWidth) / 2,
+                    fillCost,
+                    filledPixels);
+                import core.thread;
+                //Thread.sleep((min(20 * fWidth, fWidth > 500 ? 20 : 500)).msecs);
+               // Thread.sleep(20.msecs);
+            }
+
             if (fWidth == 1)
-                assert(result >= 0);
+                assert(result >= 0, "test with fWidth == 1 returned uncertain result!");
             auto type = (*node)[subIdx].type;
             if (result < 0) // block is not completely filled
             {
@@ -1186,6 +1313,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
                     subdivide(node, subIdx);
                 else if (type == compressedThis)
                     extract(node, subIdx);
+                draw(41);
                 genericFill((*node)[subIdx].thisPtr, fWidth / 4, subBegin, testFun);
             }
             else if (result > 0) // block is filled
@@ -1195,31 +1323,53 @@ struct SedecTree(AddressType, alias calc, bool zCache)
                     garbage = (*node)[subIdx].thisPtr;
                 else if (type == ChildTypes.compressedThis)
                     garbage = (*node)[subIdx].compressedThis;
-
+                filledPixels += fWidth ^^ 2;
                 (*node)[subIdx].type = cast(ChildTypes)result;
 
                 if (garbage !is null)
                     sedecAllocator.dispose(garbage);
-
-                foreach (y; 0 .. 40)
-                {
-                    foreach (x; 0 .. 120)
-                    {
-                        import std.algorithm;
-                        if (x >= subBegin.x && y >= subBegin.y && x <= subBegin.x + fWidth - 1 && y <= subBegin.y + fWidth - 1)
-                            writef!"\x1B[46m%s"(this[x, y].predSwitch(0, "░", 1, "N", 2, " ", "X"));
-                        else if (x >= begin.x && y >= begin.y && x <= begin.x + fWidth * 4 - 1 && y <= begin.y + fWidth * 4 - 1)
-                            writef!"\x1B[47m%s"(this[x, y].predSwitch(0, "░", 1, "N", 2, " ", "X"));
-                        else
-                            writef!"\x1B[0m%s"(this[x, y].predSwitch(0, "░", 1, "N", 2, " ", "X"));
-                    }
-                    write("\x1B[0m\n");
-                }
-                writeln();
-                import core.thread;
-                Thread.sleep(20.msecs);
+                draw(46);
             }
         }
+    }
+
+    /+static _UnionBody UnionBody(T...)(T bodies)
+    {
+        alias U = _UnionBody!T;
+        auto result = U(bodies);
+//        result.bodies = bodies;
+        return result;
+    }+/
+    static struct UnionBody(T...)
+    {
+        T bodies;
+        FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+        {
+            auto result = FillValue.none;
+            static foreach (i, dlg; T[])
+            {{
+                FillValue dresult;
+                static if (isPointer!dlg)
+                    dresult = (*bodies[i])(fWidth, begin);
+                else
+                    dresult = bodies[i](fWidth, begin);
+                if (dresult == FillValue.allTrue)
+                    return dresult;
+                if (dresult == FillValue.mixed)
+                    result = dresult;
+            }}
+            return result;
+        }
+    }
+
+    void unionFill(T...)(T bodies)
+    {
+        static foreach (i, b; bodies)
+            static assert(b.isSolidBody, format("argument %s is not a solid body", i));
+        UnionBody!T b;
+        static foreach (i, bd; bodies)
+            b.bodies[i] = bd;
+        genericFill(b);
     }
 }
 

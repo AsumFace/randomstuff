@@ -15,14 +15,36 @@ import std.format;
 void main()
 {
     import sedectree;
-
-    auto tree = sedecTree!(ulong, c => false, true)();
+    alias tty = ushort;
+    auto tree = sedecTree!(tty, c => false, true)();
 
     Vector!(ulong, 2)[] points = new Vector!(ulong, 2)[100];
 
     foreach (ref e; points[])
     {
         e = Vector!(ulong, 2)(uniform!ulong, uniform!ulong);
+    }
+
+
+    tree.subdivide(tree.root, vec2l(0, 0));
+    tree.subdivide((*tree.root)[0, 0].thisPtr, vec2l(0, 0));
+    tree.subdivide((*(*tree.root)[0, 0].thisPtr)[0, 0].thisPtr, vec2l(0, 0));
+    tree._print(tree.root);
+    tree.compress((*tree.root)[0, 0].thisPtr, cast(Vector!(ubyte, 2))vec2l(0, 0));
+    tree._print(tree.root);
+    tree.compress(tree.root, cast(Vector!(ubyte, 2))vec2l(0, 0));
+    ZBlob((*tree.root)[0, 0].compressedThis).contentSize.writeln;
+    tree._print(tree.root);
+    writefln("hehe");
+    writeln(tree[0, 0]);
+    writeln(tree[0, 0]);
+
+    foreach (y; 0 .. 4)
+    {
+        foreach (x; 0 .. 4)
+        {
+            writefln("%s %s: %s", x, y, tree[x * 4096/2, 4096/2]);
+        }
     }
 
     /+foreach (y; 0 .. 4000)
@@ -33,7 +55,7 @@ void main()
         }
     }+/
     auto begin = MonoTime.currTime;
-    foreach (i, p; points)
+    foreach (i, p; points[0..0])
     {
         stderr.writefln!"i%s"(i);
         auto radius = 50;
@@ -75,7 +97,7 @@ void main()
 
     tree.optimize(tree.root);
     //tree._print(tree.root);
-    foreach (i; 0 .. 1)
+    foreach (i; 0 .. 0)
     {
         foreach (ii; 0 .. 1)
         {
@@ -184,13 +206,29 @@ import arsd.color;
         tree.nvg = nvg;
         tree.window = window;
 
-        auto body1 = tree.Circle(vec2ul(1500,1000), 800, FillValue.allTrue);
-        auto body2 = tree.Rectangle(vec2ul(200, 600), vec2ul(3000-200, 2000-600), FillValue.allTrue);
+        import std.range;
+        auto body1 = tree.Rectangle(cast(Vector!(tty, 2))vec2ul(200, 100), cast(Vector!(tty, 2))vec2ul(3000-201, 2000-101));
 
-        tree.unionFill(body2, &body1);
-            //tree.rectangleFill(vec2ul(200, 600), vec2ul(3000-200, 2000-600), FillValue.allTrue);
-            //tree.circleFill(vec2ul(1500,1000), 800, FillValue.allTrue);
+        static foreach (i; iota(0, 22, 2))
+        {
+            mixin(format(q{
+            auto bodyA%1$s = tree.Circle(cast(Vector!(tty, 2))vec2ul(1500-%1$s*10,1000), cast(tty)800-%1$s*10);
+            auto bodyB%1$s = tree.Circle(cast(Vector!(tty, 2))vec2ul(1500-(%1$s+1)*10,1000), cast(tty)800-(%1$s+1)*10);
+            auto ring%1$s = tree.DifferenceBody(bodyA%1$s, bodyB%1$s);
+            }, i));
+        }
 
+        mixin(format(q{
+        auto dif = tree.DifferenceBody(body1, tree.UnionBody(%(ring%s, %)));
+        }, iota(0, 22, 2)));
+
+        tree.genericFill(dif, true);
+        /+tree.unionFill(body2, &body1);
+
+        tree.rectangleFill(vec2ul(200, 600), vec2ul(3000-200, 2000-600), true);
+        tree.circleFill(vec2ul(1500,1000), 800, false);
+        tree.circleFill(vec2ul(1500,1000), 780, true);
++/
 
 
     assert(0);
@@ -892,3 +930,38 @@ struct ZoomableMap
     }
 }
 
+struct sqRange
+{
+    Vector!(ulong, 2) begin;
+    Vector!(ulong, 2) end;
+    Vector!(ulong, 2) state;
+
+    bool empty() const
+    {
+        return state == end;
+    }
+
+    Vector!(ulong, 2) front() const
+        in(!empty)
+    {
+        return state;
+    }
+
+    void popFront()
+        in(!empty)
+    {
+        import core.bitop;
+        state.x += 1;
+        if (popcnt(state.x) <= 1)
+        {}
+    }
+}
+
+T univBsf(T)(T input)
+{
+    import core.bitop;
+    if (input == 0)
+        return T.sizeof;
+    else
+        return bsf(input);
+}

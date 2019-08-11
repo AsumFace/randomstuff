@@ -194,11 +194,15 @@ void main()
     window.glfwSetScrollCallback(&scrollCallback);
     window.glfwSetKeyCallback(&keyCallback);
 
-
+        enum scale = 20;
             nvg.beginFrame(width, height);
             scope(exit) nvg.endFrame();
 import arsd.color;
-            auto canvas = MemoryImage.fromImageFile("/tmp/test.png");
+            ubyte[] imgdata = new ubyte[scale*scale*1500UL*1000*4];
+            imgdata.fill(cast(ubyte[])[0,0,0,255]);
+            writeln(imgdata.length);
+            auto loo = new TrueColorImage(1500*scale, 1000*scale, imgdata);
+            MemoryImage canvas = loo;
             auto img = nvg.createImageFromMemoryImage(canvas);
 
         tree.target = canvas;
@@ -207,22 +211,43 @@ import arsd.color;
         tree.window = window;
 
         import std.range;
-        auto body1 = tree.Rectangle(cast(Vector!(tty, 2))vec2ul(200, 100), cast(Vector!(tty, 2))vec2ul(3000-201, 2000-101));
+        auto body1 = tree.Rectangle(cast(Vector!(tty, 2))vec2ul(100*scale, 50*scale), cast(Vector!(tty, 2))vec2ul(scale*(1500-100), scale*(1000-50)));
 
-        static foreach (i; iota(0, 22, 2))
+        static foreach (i; iota(0, 72, 2))
         {
             mixin(format(q{
-            auto bodyA%1$s = tree.Circle(cast(Vector!(tty, 2))vec2ul(1500-%1$s*10,1000), cast(tty)800-%1$s*10);
-            auto bodyB%1$s = tree.Circle(cast(Vector!(tty, 2))vec2ul(1500-(%1$s+1)*10,1000), cast(tty)800-(%1$s+1)*10);
+            auto bodyA%1$s =
+                tree.Circle(cast(Vector!(tty, 2))vec2ul(scale*(750-%1$s*10),scale*500), cast(tty)(scale*(400-%1$s*10)));
+            auto bodyB%1$s =
+                tree.Circle(cast(Vector!(tty, 2))vec2ul(scale*(750-(%1$s+1)*10),scale*500), cast(tty)(scale*(400-(%1$s+1)*10)));
             auto ring%1$s = tree.DifferenceBody(bodyA%1$s, bodyB%1$s);
             }, i));
         }
 
         mixin(format(q{
         auto dif = tree.DifferenceBody(body1, tree.UnionBody(%(ring%s, %)));
-        }, iota(0, 22, 2)));
+        }, iota(0, 72, 2)));
+
+        auto bbb = MonoTime.currTime;
+        writefln("begin time: %s", bbb - trig);
 
         tree.genericFill(dif, true);
+
+        writefln("render time: %s", MonoTime.currTime - bbb);
+        writefln("end time: %s", MonoTime.currTime - trig);
+        import arsd.png;
+        /+auto pbm = File("seq/result.pbm", "w");
+        auto pbmwriter = pbm.lockingTextWriter;
+        pbmwriter.formattedWrite("P1\n%s %s\n", 1500*scale, 1000*scale);
+        foreach (y; 0 .. 1000 * scale)
+        {
+            foreach (x; 0 .. 1500 * scale)
+                pbmwriter.formattedWrite("%s ", tree.target.getPixel(x, y).components[0] > 32 ? 1 : 0);
+            pbmwriter.formattedWrite("\n");
+            writeln(y);
+        }
+        pbm.close;+/
+        writePng("seq/result.png", tree.target);
         /+tree.unionFill(body2, &body1);
 
         tree.rectangleFill(vec2ul(200, 600), vec2ul(3000-200, 2000-600), true);

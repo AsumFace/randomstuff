@@ -13,6 +13,14 @@ import std.string : fromStringz;
 import std.stdio;
 import std.meta;
 
+import std.datetime;
+typeof(MonoTime.currTime) trig;
+
+static this()
+{
+    trig = MonoTime.currTime;
+}
+
 struct AllocInfo
 {
     ulong sourceLine;
@@ -380,7 +388,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
             //stderr.writefln("w%s d%s %s", width, depth, (*activeNode).toString);
             assert(activeNode !is null);
             ChildTypes result = (*activeNode)[subIdx].type;
-            ldep = depth;
+            //ldep = depth;
 
             if (result == ChildTypes.allFalse)
                 return result;
@@ -1164,7 +1172,6 @@ struct SedecTree(AddressType, alias calc, bool zCache)
             {
                 return FillValue.allTrue;
             }
-            assert(fWidth > 4);
             return FillValue.mixed;
         }
     }
@@ -1206,8 +1213,8 @@ struct SedecTree(AddressType, alias calc, bool zCache)
             foreach (v; fCorners[])
             {
                 import std.bigint;
-                auto sqDistance = v[].fold!((a, b) => a + BigInt(b) ^^ 2)(BigInt(0));
-                auto contained = sqDistance <= BigInt(radius) ^^ 2;
+                auto sqDistance = v[].fold!((a, b) => a + cast(uint)(b) ^^ 2)(0u);
+                auto contained = sqDistance <= cast(uint)radius ^^ 2;
                 if (contained)
                     nContained += 1;
             }
@@ -1274,7 +1281,6 @@ struct SedecTree(AddressType, alias calc, bool zCache)
     NVGContext nvg;
     GLFWwindow* window;
     ulong cnt;
-    int ldep;
     void genericFill(F)(NodeType* node, AddressType fWidth, Vector!(AddressType, 2) begin, F testFun, bool value)
     {
         import std.random;
@@ -1289,14 +1295,25 @@ struct SedecTree(AddressType, alias calc, bool zCache)
             import arsd.color;
             void draw(int col)
             {
+                return;
+                import core.thread;
+                //Thread.sleep(100.usecs);
+                if (MonoTime.currTime > trig)
+                {
+                    writeln(trig);
+
+                }
+                else
+                    return;
                 import core.bitop;
+                glFinish();
                 glClearColor(0, 0, 0, 0);
                 glClear(glNVGClearFlags);
                 import std.algorithm : predSwitch;
 
-                if (fWidth > 16)
+                //if (fWidth == 16)
                 {
-                foreach (y; 0 .. target.height)
+                /+foreach (y; 0 .. target.height)
                 {
                     foreach (x; 0 .. target.width)
                     {
@@ -1315,26 +1332,26 @@ struct SedecTree(AddressType, alias calc, bool zCache)
                             baseColor = Color.green;
                         target.setPixel(x, y, baseColor);
                     }
-                }
+                }+/
 
                 nvg.beginFrame(1500, 1000);
-                img = nvg.createImageFromMemoryImage(target);
+                img = nvg.createImageFromMemoryImage(target, NVGImageFlag.NoFiltering);
                 nvg.beginPath();
-                nvg.rect(0, 0, 1500, 1000);
+                nvg.rect(0, 0, 15000, 10000);
                 nvg.fillPaint = nvg.imagePattern(0, 0, 1500, 1000, 0, img);
                 nvg.fill();
-
                 nvg.endFrame;
-                import arsd.png;
-                //writePng(format!"seq/%06s.png"(cnt++), target);
+
+
                 glfwSwapBuffers(window);
-                glFinish();
+
                 }import core.bitop;
                 /+writefln("depth: %s; fillCost: %s; filledPixels: %s",
                     (AddressType.sizeof * 8 / 2) - bsf(fWidth) / 2,
                     fillCost,
                     filledPixels);
                 +/import core.thread;
+                trig = MonoTime.currTime + 100.msecs;
                 //Thread.sleep((min(20 * fWidth, fWidth > 500 ? 20 : 500)).msecs);
                // Thread.sleep(20.msecs);
             }
@@ -1342,7 +1359,6 @@ struct SedecTree(AddressType, alias calc, bool zCache)
             if (fWidth == 1)
                 assert(result >= 0, "test with fWidth == 1 returned uncertain result!");
             auto type = (*node)[subIdx].type;
-            //writefln("fWidth: %s; result: %s", fWidth, result);
             if (result < 0) // block is not completely filled
             {
                 if (type == cast(ChildTypes)value)
@@ -1354,9 +1370,8 @@ struct SedecTree(AddressType, alias calc, bool zCache)
                         subdivide(node, subIdx);
                     else if (type == compressedThis)
                         extract(node, subIdx);
-                    draw(41);
                     genericFill((*node)[subIdx].thisPtr, fWidth / 4, subBegin, testFun, value);
-                    if (fWidth == 1024 || fWidth == 64)
+                    if (fWidth == 1024*4 && false)
                     {
                         optimize((*node)[subIdx].thisPtr);
                         compress(node, cast(Vector!(ubyte, 2))subIdx);
@@ -1370,41 +1385,73 @@ struct SedecTree(AddressType, alias calc, bool zCache)
                     garbage = (*node)[subIdx].thisPtr;
                 else if (type == ChildTypes.compressedThis)
                     garbage = (*node)[subIdx].compressedThis;
-                filledPixels += fWidth ^^ 2;
                 (*node)[subIdx].type = cast(ChildTypes)value;
-
-                if (garbage !is null)
+                import std.algorithm;
+                import std.math;
+                /+        Color baseColor = (cast(ChildTypes)value).predSwitch(0, Color.black, 1,
+                            Color(cast(int)((cos(fillCost / 100000.0)+1)*127),
+                            cast(int)((cos((fillCost / 100000.0 + 2*cast(double)PI/3))+1)*127),
+                            cast(int)((cos((fillCost / 100000.0 + 4*cast(double)PI/3)))+1)*127), Color.purple);
+                +/    filledPixels += fWidth ^^ 2;
+                /+foreach (y; 0 .. fWidth )
+                    foreach (x; 0 .. fWidth)
+                    {
+                        target.setPixel(fWidth*subIdx.x + begin.x + x, fWidth*subIdx.y + begin.y + y, Color.white);
+                    }
+                +/if (garbage !is null)
                     sedecAllocator.dispose(garbage);
-                draw(46);
             }
+            draw(0);
         }
     }
 
-    static _UnionBody!T UnionBody(T...)(T bodies)
+    static auto UnionBody(T...)(T bodies)
     {
-        _UnionBody!T result;
-        result.bodies = bodies;
+        import std.functional;
+        _UnionBody!(bodies.length, Filter!(templateNot!isPointer, T[])) result;
+        static foreach (i, dlg; bodies)
+        {
+            static assert(dlg.isSolidBody);
+            static if (isPointer!(typeof(dlg)))
+                result.bodies[i] = &(dlg.opCall);
+            else
+            {
+                result.aux[Filter!(templateNot!isPointer, T[0 .. i]).length] = dlg;
+                result.bodies[i] = &(result.aux[Filter!(templateNot!isPointer, T[0 .. i]).length].opCall);
+            }
+        }
         return result;
     }
-    static struct _UnionBody(T...)
+
+    static struct _UnionBody(uint num, T...)
     {
         enum isSolidBody = true;
-        T bodies;
+        T aux;
+        FillValue delegate(AddressType, Vector!(AddressType, 2))[num] bodies;
+        uint vCache = 0;
         FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
         {
             auto result = FillValue.none;
-            static foreach (i, dlg; T[])
-            {{
-                FillValue dresult;
-                static if (isPointer!dlg)
-                    dresult = (*bodies[i])(fWidth, begin);
-                else
-                    dresult = bodies[i](fWidth, begin);
+            FillValue dresult = bodies[vCache](fWidth, begin);
+            if (dresult == FillValue.allTrue)
+            {
+                return dresult;
+            }
+            if (dresult == FillValue.mixed)
+                result = dresult;
+            foreach (i, b; bodies)
+            {
+                if (i == vCache)
+                    continue;
+                dresult = b(fWidth, begin);
                 if (dresult == FillValue.allTrue)
+                {
+                    vCache = cast(uint)i;
                     return dresult;
+                }
                 if (dresult == FillValue.mixed)
                     result = dresult;
-            }}
+            }
             return result;
         }
     }

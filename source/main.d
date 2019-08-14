@@ -194,7 +194,7 @@ void main()
     window.glfwSetScrollCallback(&scrollCallback);
     window.glfwSetKeyCallback(&keyCallback);
 
-        enum scale = 20;
+        enum scale = 30;
             nvg.beginFrame(width, height);
             scope(exit) nvg.endFrame();
 import arsd.color;
@@ -236,18 +236,18 @@ import arsd.color;
         writefln("render time: %s", MonoTime.currTime - bbb);
         writefln("end time: %s", MonoTime.currTime - trig);
         import arsd.png;
-        /+auto pbm = File("seq/result.pbm", "w");
+        auto pbm = File("seq/result.pbm", "w");
         auto pbmwriter = pbm.lockingTextWriter;
         pbmwriter.formattedWrite("P1\n%s %s\n", 1500*scale, 1000*scale);
         foreach (y; 0 .. 1000 * scale)
         {
             foreach (x; 0 .. 1500 * scale)
-                pbmwriter.formattedWrite("%s ", tree.target.getPixel(x, y).components[0] > 32 ? 1 : 0);
-            pbmwriter.formattedWrite("\n");
-            writeln(y);
+                pbmwriter.formattedWrite!"%s"(tree.target.getPixel(x, y).components[0] > 32 ? "1 " : "0 ");
+            if (y % 128 == 0)
+                stderr.writef("\r%-20s", y);
         }
-        pbm.close;+/
-        writePng("seq/result.png", tree.target);
+        pbm.close;
+        //writePng("seq/result.png", tree.target);
         /+tree.unionFill(body2, &body1);
 
         tree.rectangleFill(vec2ul(200, 600), vec2ul(3000-200, 2000-600), true);

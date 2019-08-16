@@ -12,6 +12,7 @@ import std.format;
 import std.string : fromStringz;
 import std.stdio;
 import std.meta;
+debug import std.random;
 
 import std.datetime;
 typeof(MonoTime.currTime) trig;
@@ -52,6 +53,7 @@ struct SedecNode(AddressType, AddressType _fWidth)
 {
     alias fWidth = _fWidth;
     static assert(fWidth.isPowerOf2);
+    static assert(this.sizeof % ulong.sizeof == 0);
     static if (fWidth > 1)
     {
         alias isBottom = Alias!false;
@@ -60,6 +62,8 @@ struct SedecNode(AddressType, AddressType _fWidth)
     else
         alias isBottom = Alias!true;
     debug ulong _protector = 0xdeadbeef01cecafe;
+    debug ulong _fWidth_check = fWidth;
+    debug ulong ident;
     debug enum _Kinds : ubyte {
         uninitialized,
         nil,
@@ -68,15 +72,15 @@ struct SedecNode(AddressType, AddressType _fWidth)
     }
     debug _Kinds[16] _kind;
     debug ulong[16] _srcLines;
-    debug ulong _fWidth_check = fWidth;
     private Word!(16, 0xf) _type;
     private ChildStore[16] _children;
 
     static assert(_type.sizeof == 8); // should be packed exactly with no padding
     invariant
     {
-        debug assert(&this is null || _fWidth_check == fWidth);
-        debug assert(&this is null || _protector == 0xdeadbeef01cecafe, format("protector has been corrupted! %08x, %s", _protector, _toString));
+        debug assert(cast(size_t)&this % ulong.sizeof == 0, "Node does not have proper alignment");
+        debug assert(_protector == 0xdeadbeef01cecafe, format("protector has been corrupted! %08x, %s", _protector, _toString));
+        debug assert(_fWidth_check == fWidth, format("node should have fWidth %s, but has %s", fWidth, _fWidth_check));
         assert(null is cast(void*)0, "null pointer does not point to 0. this code assumes that");
         //assert(cast(size_t)&this < 0xff00000000000000);
         foreach (i; 0 .. 16)
@@ -84,7 +88,7 @@ struct SedecNode(AddressType, AddressType _fWidth)
             import std.stdio;
             import std.algorithm;
             //stderr.writefln("%x", &this);
-            assert(&this is null || _type[i].asInt.among(EnumMembers!ChildTypes), format!"0b%04b in %s is not a valid ChildTypes value"(_type[i].asInt, i));
+            assert(_type[i].asInt.among(EnumMembers!ChildTypes), format!"0b%04b in %s is not a valid ChildTypes value"(_type[i].asInt, i));
 
       //      with (ChildTypes) if (_type[i].asInt == compressedThis)
       //      {
@@ -126,8 +130,9 @@ struct SedecNode(AddressType, AddressType _fWidth)
         string result;
         with (ChildTypes) result =
             format(
-                "%s{%(%(%c%),%)}{",
+                "%s[%x]{%(%(%c%),%)}{",
                 pstring,
+                ident,
                 _type[].map!(n => n.predSwitch(
                     allTrue, "T",
                     allFalse, "F",
@@ -322,17 +327,18 @@ struct SedecNode(AddressType, AddressType _fWidth)
 }
 
 
-auto sedecTree(AddressType, alias calc, bool zCache)()
+auto sedecTree(AddressType, bool zCache)()
     if (isIntegral!AddressType)
 {
-    auto result = SedecTree!(AddressType, calc, zCache)(ZSTD_createCCtx, ZSTD_createDCtx);
+    auto result = SedecTree!(AddressType, zCache)(ZSTD_createCCtx, ZSTD_createDCtx);
     result.root = make!(result.TopNodeType)(sedecAllocator);
+    debug result.root.ident = uniform!ulong;
     if (result.root is null)
         assert(0);
     return result;
 }
 
-struct SedecTree(AddressType, alias calc, bool zCache)
+struct SedecTree(AddressType, bool zCache)
     if (isIntegral!AddressType)
 {
     private ZSTD_CCtx* cctx;
@@ -368,6 +374,8 @@ struct SedecTree(AddressType, alias calc, bool zCache)
         if (isInstanceOf!(SedecNode, NT))
         in(activeNode !is null && &*activeNode)
     {
+        stderr.writefln!"depth: %s zcache store: %(%x,%)"(depth, cast(ulong[])zcache.store);
+        stderr.writefln("activeNode: %s", *activeNode);
         import std.math;
         static if (!zCache)
             assert(currCache is null);
@@ -444,8 +452,8 @@ struct SedecTree(AddressType, alias calc, bool zCache)
                             }
 
                             // switch to cache
-                            assert(*&cast(NT.ChildNodeType*)cacheResponse);
-                            return _opIndex(i1, i2, cast(NT.ChildNodeType*)cacheResponse, begin + NT.fWidth * subIdx, depth + 1, zcache.store);
+                            assert(&*cacheResponse);
+                            return _opIndex(i1, i2, cacheResponse, begin + NT.fWidth * subIdx, depth + 1, zcache.store);
                         }
                         else
                         {
@@ -468,12 +476,11 @@ struct SedecTree(AddressType, alias calc, bool zCache)
                             // we want the data to be correctly aligned
                             assert(cast(ulong)&zcache.store[0] % ulong.sizeof == 0);
                             assert((*activeNode)[subIdx].thisOffset % ulong.sizeof == 0);
-
-                            //writefln("%s %s", currCache.length, (*activeNode)[subIdx].thisOffset);
+                            writefln!"currCache: %(%x,%)"(cast(ulong[])currCache);
                             NT.ChildNodeType* nextNode = cast(NT.ChildNodeType*)(&currCache
                                 [(*activeNode)[subIdx].thisOffset + ulong.sizeof .. $]
                                 [0 .. NT.ChildNodeType.sizeof][0]);
-                            assert(*&nextNode);
+                            assert(&*nextNode);
                             return _opIndex(i1, i2, nextNode, begin + NT.fWidth * subIdx, depth + 1, zcache.store);
                         }
                         if (result == ChildTypes.compressedThis)
@@ -663,6 +670,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
     {
         static assert(NT.fWidth > 1);
         auto newNode = sedecAllocator.make!(NT.ChildNodeType);
+        debug newNode.ident = uniform!ulong;
         if (newNode is null)
             assert(0);
 
@@ -834,6 +842,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
 
         NT* query(NT)(ubyte* blob, ubyte[] store)
             in(blob !is null)
+            out(r; r is null || &*r)
         {
             if (store is null)
                 return null;
@@ -845,6 +854,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
         ubyte[] nextStrip(ubyte[] buf)
         {
             auto step = *cast(ulong*)&buf[ulong.sizeof .. ulong.sizeof * 2][0];
+            stderr.writefln("nextStrip: %(%x,%)", buf[ulong.sizeof + step .. $]);
             return buf[ulong.sizeof + step .. $];
         }
 
@@ -898,10 +908,10 @@ struct SedecTree(AddressType, alias calc, bool zCache)
         objcpy(*node, dst[pos .. $]);
         assert(&*cast(NT*)&dst[pos]);
         occupied += NT.sizeof;
-
         // we only know the offset in the array, the array may be relocated by subsequent packing
         sNT* currNode(sNT)()
         {
+            assert(&*cast(sNT*)&dst[pos]);
             return cast(sNT*)&dst[pos];
         }
 
@@ -1135,6 +1145,12 @@ struct SedecTree(AddressType, alias calc, bool zCache)
 
         FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
         {
+            if (fWidth == 1)
+                return begin.x >= low.x && begin.x <= high.x && begin.y >= low.y && begin.y <= high.y
+                    ? FillValue.allTrue
+                    : FillValue.none;
+
+
             bool outside = false;
             if (low.x > begin.x + fWidth - 1)
                 outside = true;
@@ -1145,9 +1161,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
             if (high.y < begin.y)
                 outside = true;
             if (outside)
-            {
                 return FillValue.none;
-            }
             bool enclosed = true;
             if (!(low.x <= begin.x && high.x >= begin.x + fWidth - 1))
                 enclosed = false;
@@ -1176,6 +1190,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
         enum isSolidBody = true;
         Vector!(AddressType, 2) center;
         AddressType radius;
+
         this(Vector!(AddressType, 2) center, AddressType radius)
         {
             this.center = center;
@@ -1186,6 +1201,17 @@ struct SedecTree(AddressType, alias calc, bool zCache)
         {
             import std.algorithm;
             alias V = Vector!(Signed!AddressType, 2);
+
+            if (fWidth == 1)
+            {
+                auto sqDistance = (cast(V)(begin - center))[].fold!((a, b) => a + cast(uint)(b) ^^ 2)(0u);
+                auto contained = sqDistance <= cast(ulong)radius ^^ 2;
+                if (contained)
+                    return FillValue.allTrue;
+                else
+                    return FillValue.none;
+            }
+
             V[4] fCorners;
             fCorners[0] = begin;
             fCorners[1] = cast(V)vec2ul(begin.x, begin.y + fWidth);
@@ -1207,12 +1233,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
             if (nContained == 4)
                 return FillValue.allTrue;
             if (fWidth == 1)
-            {
-                if (nContained >= 2)
-                    return FillValue.allTrue;
-                else
-                    return FillValue.none;
-            }
+                unreachable;
             if (nContained > 0)
                 return FillValue.mixed;
 
@@ -1253,6 +1274,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
         fillCost = 0;
         filledPixels = 0;
         expireCache; // this function might invalidate cache
+
         genericFill(root, cast(Vector!(AddressType, 2))vec2ul(0, 0), testFun, value);
     }
     ulong fillCost;
@@ -1275,7 +1297,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
             fillCost += 1;
             auto subIdx = cast(Vector!(AddressType, 2))vec2ul(i % 4, i / 4);
             auto subBegin = begin + NT.fWidth * subIdx;
-            auto result = testFun(NT.fWidth, subBegin);
+            auto result = testFun(cast(AddressType)NT.fWidth, subBegin);
 
             import arsd.color;
             void draw(int col)
@@ -1393,11 +1415,7 @@ struct SedecTree(AddressType, alias calc, bool zCache)
                             cast(int)((cos((fillCost / 100000.0 + 2*cast(double)PI/3))+1)*127),
                             cast(int)((cos((fillCost / 100000.0 + 4*cast(double)PI/3)))+1)*127), Color.purple);
                 +/    filledPixels += NT.fWidth ^^ 2;
-                foreach (y; 0 .. NT.fWidth)
-                    foreach (x; 0 .. NT.fWidth)
-                    {
-                        target.setPixel(NT.fWidth*subIdx.x + begin.x + x, NT.fWidth*subIdx.y + begin.y + y, Color.white);
-                    }
+
                 if (garbage !is null)
                     sedecAllocator.dispose(garbage);
             }

@@ -16,7 +16,7 @@ void main()
 {
     import sedectree;
     alias tty = ushort;
-    auto tree = sedecTree!(tty, true)();
+    auto tree = sedecTree!(tty)();
 
     Vector!(ulong, 2)[] points = new Vector!(ulong, 2)[100];
 
@@ -29,11 +29,6 @@ void main()
     tree.subdivide(tree.root, vec2l(0, 0));
     tree.subdivide((*tree.root)[0, 0].thisPtr, vec2l(0, 0));
     tree.subdivide((*(*tree.root)[0, 0].thisPtr)[0, 0].thisPtr, vec2l(0, 0));
-    tree._print(tree.root);
-    tree.compress((*tree.root)[0, 0].thisPtr, cast(Vector!(ubyte, 2))vec2l(0, 0));
-    tree._print(tree.root);
-    tree.compress(tree.root, cast(Vector!(ubyte, 2))vec2l(0, 0));
-    ZBlob((*tree.root)[0, 0].compressedThis).contentSize.writeln;
     tree._print(tree.root);
     writefln("hehe");
     writeln(tree[0, 0]);
@@ -82,67 +77,10 @@ void main()
     }
     auto dura = MonoTime.currTime - begin;
     stderr.writefln!"time needed: %s"(dura);
-    /+foreach (y; checked!Saturate(points[0].y) - 20 .. checked!Saturate(points[0].y) + 20)
-    {
-        foreach (x; checked!Saturate(points[0].x) - 50 .. checked!Saturate(points[0].x) + 50)
-        {
-            writef!"%b"(tree[cast(ulong)x, cast(ulong)y]);
-        }
-        writeln;
-    }+/
-    /+foreach (x; 0 .. 40)
-    {
-        tree[39-x, x] = ChildTypes.allTrue;
-    }+/
 
     tree.optimize(tree.root);
-    //tree._print(tree.root);
-    foreach (i; 0 .. 0)
-    {
-        foreach (ii; 0 .. 1)
-        {
-            tree.compress(tree.root, cast(Vector!(ubyte, 2))vec2l(ii%4, ii/4));
-        }
-        foreach (ii; 0 .. 1)
-        {
-            tree.extract(tree.root, cast(Vector!(ubyte, 2))vec2l(ii%4, ii/4));
-        }
-    }
-
-    /+foreach (y; 0 .. 40)
-    {
-        foreach (x; 0 .. 120)
-        {
-            writef!"%d"(tree[x, y]);
-        }
-        writeln;
-    }+/
-
-    /+foreach (x; 0 .. 40)
-    {
-        tree[x, x] = ChildTypes.allTrue;
-    }+/
     writeln;
 
-
-    /+foreach (i; 0 .. 10)
-    {
-        tree.rectangleFill(vec2ul(0, 0) +i, vec2ul(119, 39) +i, cast(FillValue)(i % 2 + 1));
-    }+/
-
-
-    /+foreach (y; 0 .. 40)
-    {
-        foreach (x; 0 .. 120)
-        {
-            writef!"%d"(tree[x, y]);
-        }
-        writeln;
-    }+/
-
-    //tree._print(tree.root);
-
-    //Thread.sleep(500.msecs);
 
     import std.datetime;
     if (glfwInit == false)
@@ -194,7 +132,7 @@ void main()
     window.glfwSetScrollCallback(&scrollCallback);
     window.glfwSetKeyCallback(&keyCallback);
 
-        enum scale = 4;
+        enum scale = 20;
             nvg.beginFrame(width, height);
             scope(exit) nvg.endFrame();
 import arsd.color;

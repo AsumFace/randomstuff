@@ -2,6 +2,7 @@ project('behold', 'd')
 
 behold_sources = [
   'source/sedectree.d',
+  'source/zallocator.d',
   'source/sys/userfaultfd.d',
   'source/sys/fcntl.d',
   'source/cgfm/math/box.d',

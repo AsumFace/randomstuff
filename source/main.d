@@ -11,10 +11,24 @@ import std.experimental.checkedint;
 import std.algorithm;
 import std.typecons;
 import std.format;
-
+import std.experimental.allocator;
 void main()
 {
     import sedectree;
+    ulong re;
+    while (true)
+    {
+        Thread.sleep(1.seconds);
+        ubyte[] allo = sedecAllocator.makeArray!ubyte(100_000_000);
+        if (allo is null)
+            assert(0);
+        foreach (i; 0 .. 100_000_000)
+            allo[i] = cast(ubyte)i;
+        writeln("alloc");
+    }
+
+    stderr.writefln!"result: %s"(re);
+    assert(0);
     alias tty = ushort;
     auto tree = sedecTree!(tty)();
 
@@ -169,6 +183,7 @@ import arsd.color;
         auto bbb = MonoTime.currTime;
         writefln("begin time: %s", bbb - trig);
 
+        tree.genericFill(tree.checkerPattern(), true);
         tree.genericFill(dif, true);
 
         writefln("render time: %s", MonoTime.currTime - bbb);

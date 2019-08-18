@@ -11,7 +11,6 @@ import std.format;
 import std.string : fromStringz;
 import std.stdio;
 import std.meta;
-debug import std.random;
 
 import std.datetime;
 typeof(MonoTime.currTime) trig;
@@ -37,9 +36,9 @@ enum ChildTypes
     allTrue = 0b0001, // a bool cast to this enum shall produce either allFalse or allTrue depending on its value
     thisPtr = 0b0010,
 }
-
+import zallocator;
 //alias SedecAllocator = Mallocator;
-alias sedecAllocator = Mallocator.instance;
+alias sedecAllocator = ZAllocator.instance;
 
 /+debug
     enum ulong byOffsetFlag = 0b1000;
@@ -61,7 +60,6 @@ struct SedecNode(AddressType, AddressType _fWidth)
         alias isBottom = Alias!true;
     debug ulong _protector = 0xdeadbeef01cecafe;
     debug ulong _fWidth_check = fWidth;
-    debug ulong ident;
     debug enum _Kinds : ubyte {
         uninitialized,
         nil,
@@ -127,9 +125,8 @@ struct SedecNode(AddressType, AddressType _fWidth)
         string result;
         with (ChildTypes) result =
             format(
-                "%s[%x]{%(%(%c%),%)}{",
+                "%s{%(%(%c%),%)}{",
                 pstring,
-                ident,
                 _type[].map!(n => n.predSwitch(
                     allTrue, "T",
                     allFalse, "F",
@@ -272,21 +269,14 @@ auto sedecTree(AddressType)()
 {
     auto result = SedecTree!(AddressType)();
     result.root = make!(result.TopNodeType)(sedecAllocator);
-    debug result.root.ident = uniform!ulong;
     if (result.root is null)
-        assert(0);
+        assert(0, "allocation failure");
     return result;
 }
 
 struct SedecTree(AddressType)
     if (isIntegral!AddressType)
 {
-    invariant
-    {
-        assert(cctx !is null);
-        assert(dctx !is null);
-    }
-
     alias TopNodeType = SedecNode!(AddressType, AddressType.max / 4 + 1);
 
     TopNodeType* root;
@@ -438,9 +428,9 @@ struct SedecTree(AddressType)
     {
         static assert(NT.fWidth > 1);
         auto newNode = sedecAllocator.make!(NT.ChildNodeType);
-        debug newNode.ident = uniform!ulong;
+        stderr.writefln!"%s"(cast(ulong)newNode);
         if (newNode is null)
-            assert(0);
+            assert(0, "allocation failure");
 
         foreach (child; (*newNode)[]) // make it equivalent to the current child
              child.type = (*node)[subIdx].type;
@@ -891,6 +881,23 @@ struct SedecTree(AddressType)
         static assert(bodyB.isSolidBody, "bodyB is not a solid body");
 
         genericFill(DifferenceBody(bodyA, bodyB), value);
+    }
+
+    Checker checkerPattern()
+    {
+        Checker result;
+        return result;
+    }
+
+    struct Checker
+    {
+        FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+        {
+            if (fWidth == 1)
+                return (begin.x ^ begin.y) & 1 ? FillValue.allTrue : FillValue.none;
+            else
+                return FillValue.mixed;
+        }
     }
 }
 

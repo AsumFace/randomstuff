@@ -15,7 +15,8 @@ behold_sources = [
   'source/cgfm/math/vector.d',
   'source/main.d',
   'source/word.d',
-  'source/zstdc.d'
+  'source/zstdc.d',
+  'source/fuse.d'
 ]
 
 inc_dirs = [

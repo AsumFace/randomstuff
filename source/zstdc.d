@@ -1,3 +1,11 @@
+/+--------------------Copyright Notice------------------------+\
+|      Copyright:                                              |
+|  - Facebook, Inc. 2016 - 2019                                |
+|  - AsumFace (asumface@gmail.com) 2019                        |
+|  Distributed under the BSD 3-clause license.                 |
+|  See accompanying file BSD_3clause.                          |
+\+------------------------------------------------------------+/
+
 module zstdc;
 
 extern(C):

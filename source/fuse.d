@@ -1,3 +1,11 @@
+/+--------------------Copyright Notice------------------------+\
+|      Copyright:                                              |
+|  - Miklos Szeredi (miklos@szeredi.hu) 2001-2007              |
+|  - AsumFace (asumface@gmail.com) 2019                        |
+|  Distributed under the GNU Lesser General Public License     |
+|    version 2.1. See accompanying file LGPLv2_1.              |
+\+------------------------------------------------------------+/
+
 module fuse;
 
 import core.sys.posix.sys.types : off_t;

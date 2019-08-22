@@ -119,22 +119,22 @@ struct Stack(T)
     }
     ref T front() @property
     {
-        require(!this.empty, "attempted to get front of empty stack");
+        assert(!this.empty, "attempted to get front of empty stack");
         return entries[$ - 1];
     }
     void popFront()
     {
-        require(!this.empty, "attempted to popFront of empty stack");
+        assert(!this.empty, "attempted to popFront of empty stack");
         entries = entries[0 .. $ - 1];
     }
     ref T back() @property
     {
-        require(!this.empty, "attempted to get back of empty stack");
+        assert(!this.empty, "attempted to get back of empty stack");
         return entries[0];
     }
     void popBack()
     {
-        require(!this.empty, "attempted to popBack of empty stack");
+        assert(!this.empty, "attempted to popBack of empty stack");
         entries = entries[1 .. $];
     }
     /**
@@ -145,7 +145,7 @@ struct Stack(T)
     void pushFront(T value)
     {
         import std.conv;
-        require(entries is null
+        assert(entries is null
                 || entries is null && entryStore is null
                 || entries.ptr >= entryStore.ptr
                 && entries.ptr + entries.length <= entryStore.ptr + entryStore.length);
@@ -169,8 +169,8 @@ struct Stack(T)
             {
                 import std.algorithm.comparison : max;
                 // TODO: try regular allocation if expansion fails
-                enforce(expandArray(stackAllocator, entryStore, max(entryStore.length, 8)),
-                        new AllocationFailure("Stack expansion failed due to allocation failure"));
+                if (!expandArray(stackAllocator, entryStore, max(entryStore.length, 8))),
+                        assert(0, "Stack expansion failed due to allocation failure");
             }
         }
         entries = entryStore[0 .. entries.length + 1];

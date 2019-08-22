@@ -151,7 +151,7 @@ private struct RTreeRange(RTree, bool dynamic, A...)
 
     void popFront()
     {
-        require(_front !is null);
+        assert(_front !is null);
         _popFront;
     }
     private void _popFront()
@@ -262,14 +262,14 @@ private struct Reference(NodeType_, LeafType_)
     }
     ref NodeType node() @property
     {
-        require((_refType & 0b1) == Types.nonLeaf);
-        require(_raw - Types.nonLeaf !is null);
+        assert((_refType & 0b1) == Types.nonLeaf);
+        assert(_raw - Types.nonLeaf !is null);
         return *cast(NodeType*)(cast(void*)_nodePtr - Types.nonLeaf);
     }
     ref LeafType leaf() @property
     {
-        require((_refType & 0b1) == Types.leaf);
-        require(_raw - Types.leaf !is null);
+        assert((_refType & 0b1) == Types.leaf);
+        assert(_raw - Types.leaf !is null);
         return *cast(LeafType*)(cast(void*)_leafPtr - Types.leaf);
     }
     Types type() @property
@@ -278,13 +278,13 @@ private struct Reference(NodeType_, LeafType_)
     }
     ref NodeType node(ref NodeType node) @property
     {
-        require((cast(size_t)&node & 0b1) == 0, "Address not aligned or garbage!");
+        assert((cast(size_t)&node & 0b1) == 0, "Address not aligned or garbage!");
         _nodePtr = cast(NodeType*)(cast(void*)&node + Types.nonLeaf);
         return node;
     }
     ref LeafType leaf(ref LeafType leaf) @property
     {
-        require((cast(size_t)&leaf & 0b1) == 0, "Address not aligned or garbage!");
+        assert((cast(size_t)&leaf & 0b1) == 0, "Address not aligned or garbage!");
         _leafPtr = cast(LeafType*)(cast(void*)&leaf + Types.leaf);
         return leaf;
     }
@@ -349,7 +349,7 @@ private struct Node(ElementType, uint _childCount, BoxType)
     }
     ref opIndex(size_t arg)
     {
-        require(!children[arg].isNull);
+        assert(!children[arg].isNull);
         return children[arg];
     }
     BoxType box;
@@ -436,7 +436,7 @@ struct RTree(_ElementType, alias BFun, uint _maxChildrenPerNode = 16, uint _minC
     void initialize()
     {
         import std.exception;
-        require(rootPtr is null);
+        assert(rootPtr is null);
         rootPtr = make!NodeType(nodeAllocator);
         enforce(rootPtr !is null, new AllocationFailure("Initialization of RTree failed due to allocation failure"));
     }
@@ -513,9 +513,9 @@ struct RTree(_ElementType, alias BFun, uint _maxChildrenPerNode = 16, uint _minC
             import std.math : isNaN;
             import std.algorithm.iteration : joiner;
             static if (pointsOnly)
-                require(result[].all!(n => !n.isNaN));
+                assert(result[].all!(n => !n.isNaN));
             else
-                require(joiner(result.min[], result.max[]).all!(n => !n.isNaN));
+                assert(joiner(result.min[], result.max[]).all!(n => !n.isNaN));
         }
         return result;
     };
@@ -585,7 +585,7 @@ private size_t drawTree(RTree, W, W2)(ref RTree tree, ref W w, ref W2 w2)
                         w.formattedWrite!"draw(box((%s, %s), (%s, %s)), hsv(0, 1.0, %s)+linewidth(0.5mm)+linetype(\"1 2\"));\n"
                             (vs.front.node.box.min[0], vs.front.node.box.min[1], vs.front.node.box.max[0], vs.front.node.box.max[1], 1.0);
                     }
-                    require(vs.front.node.box.contains(b[0]),
+                    assert(vs.front.node.box.contains(b[0]),
                         format!"%s does not contain %s of %s | diff: %s %s"(vs.front.node.box, b[0], b[1],
                             b[0].min - vs.front.node.box.min, vs.front.node.box.max - b[0].max));
                     w.formattedWrite!"draw(box((%s, %s), (%s, %s)), hsv(0, 1.0, %s)+linewidth(1mm));\n"
@@ -602,7 +602,7 @@ private size_t drawTree(RTree, W, W2)(ref RTree tree, ref W w, ref W2 w2)
         }
         else if (vs.front.node.type == ReferenceType.Types.leaf)
         {
-            require(vs.front.skip == size_t.max);
+            assert(vs.front.skip == size_t.max);
             foreach (ref a, ab; lockstep(vs.front.node.leaf[],
                                     vs.front.node.leaf[].map!((ref n) => RTree.getBounds(n))))
             {
@@ -612,7 +612,7 @@ private size_t drawTree(RTree, W, W2)(ref RTree tree, ref W w, ref W2 w2)
                     auto b = RTree.BoxType(ab, ab).makeBoxInclusive;
                 w2.formattedWrite!`"E%s" [color = green]%s`(&a, "\n");
                 w2.formattedWrite!`"L%s" -> "E%s"%s`(&(vs.front.node.leaf()), &a, "\n");
-                require(vs.front.node.box.contains(b));
+                assert(vs.front.node.box.contains(b));
                 w.formattedWrite!"draw(box((%s, %s), (%s, %s)), hsv(%s, 1.0, 0.5)+linewidth(1mm));\n"
                     (b.min[0], b.min[1], b.max[0], b.max[1], a.color == Color.green ? 120 : 200);
                 itemCount += 1;
@@ -646,10 +646,10 @@ private void check(RTree)(ref RTree tree)
             if (vs.front.skip == size_t.max)
             {
                 if (vs.length > 1)
-                    require(!vs.front.node.node[].empty);
+                    assert(!vs.front.node.node[].empty);
                 foreach (b; vs.front.node.node[].map!((ref n) => tuple(n.box, n.type)))
                 {
-                    require(vs.front.node.box.contains(b[0]),
+                    assert(vs.front.node.box.contains(b[0]),
                         format!"%s does not contain %s of %s | diff: %s %s"(vs.front.node.box, b[0], b[1],
                             b[0].min - vs.front.node.box.min, vs.front.node.box.max - b[0].max));
                 }
@@ -664,11 +664,11 @@ private void check(RTree)(ref RTree tree)
         }
         else if (vs.front.node.type == ReferenceType.Types.leaf)
         {
-            require(vs.front.skip == size_t.max);
+            assert(vs.front.skip == size_t.max);
             foreach (ref a, b; lockstep(vs.front.node.leaf[],
                                     vs.front.node.leaf[].map!((ref n) => RTree.getBounds(n))))
             {
-                require(vs.front.node.box.contains(b));
+                assert(vs.front.node.box.contains(b));
             }
             vs.popFront;
         }
@@ -692,14 +692,14 @@ private void removeEntryFromNode(NodeType)(ref NodeType node, size_t index)
     if (isInstanceOf!(Leaf, NodeType)
         || isInstanceOf!(Node, NodeType))
 {
-    require(index != size_t.max);
+    assert(index != size_t.max);
     import std.algorithm.mutation : stdremove = remove, SwapStrategy;
 
     static if (isInstanceOf!(Leaf, NodeType))
     {
         node.elements[].stdremove!(SwapStrategy.stable)(index);
         node.elements[$ - 1] = typeof(node.elements[0]).init;
-        require(node.length > 0 && node.length <= node.childCount);
+        assert(node.length > 0 && node.length <= node.childCount);
         node.length -= 1;
     }
     else static if (isInstanceOf!(Node, NodeType))
@@ -723,9 +723,9 @@ private size_t addEntryToNode(NodeType, EntryType)(ref NodeType node, ref EntryT
     static if (isInstanceOf!(Leaf, NodeType))
     {
         entryCount = node.length;
-        require(entryCount < node.childCount);
+        assert(entryCount < node.childCount);
         node.elements[entryCount] = entry;
-        require(node.length >= 0 && node.length < node.childCount);
+        assert(node.length >= 0 && node.length < node.childCount);
         node.length += 1;
         return entryCount;
     }
@@ -733,7 +733,7 @@ private size_t addEntryToNode(NodeType, EntryType)(ref NodeType node, ref EntryT
     {
         import std.range : chain, walkLength;
         entryCount = node[].walkLength;
-        require(entryCount < node.childCount);
+        assert(entryCount < node.childCount);
         node.children[entryCount] = NodeType.ReferenceType(entry);
         return entryCount;
     }
@@ -791,7 +791,7 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
         else if (datum.type == RTree.ReferenceType.Types.nonLeaf)
             insert(tree, datum.node, level, orphanStack);
         else
-            require(0);
+            unreachable;
     }
     else
     {
@@ -819,7 +819,7 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
         scope(exit)
             subTree.destroy;
 
-        require(&(subTree.back.node()) is tree.rootPtr);
+        assert(&(subTree.back.node()) is tree.rootPtr);
         static if (!is(R == RTree.ElementType))
             if (subTree.front.type == ReferenceType.Types.leaf)
                 subTree.popFront;
@@ -859,7 +859,7 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
                             insert(tree, o, originalSubTreeLength, orphanStack);
                         }
                         else
-                            require(0);
+                            unreachable;
                         return;
                     }
                     else
@@ -873,7 +873,7 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
 
                     subTree.popFront;
                     size_t deadNodeIndex = subTree.front.node[].countUntil!(n => n == deadNode);
-                    require(deadNodeIndex != size_t.max);
+                    assert(deadNodeIndex != size_t.max);
                     subTree.front.node.removeEntryFromNode(deadNodeIndex);
 
                     orphanStack.pushFront(ReferenceType(*newNodes[0]));
@@ -907,7 +907,7 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
                                 .drop(RTree.pointsOnly ? 1 : 0)
                                 .map!((ref n) => RTree.getBounds(n))
                                 .fold!((a, b) => a.expand(b))(seedA);
-                            require(newNodes[0].box.contains(datumBox));
+                            assert(newNodes[0].box.contains(datumBox));
                         }
                         else
                         {
@@ -916,7 +916,7 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
                                 .drop(RTree.pointsOnly ? 1 : 0)
                                 .map!((ref n) => RTree.getBounds(n))
                                 .fold!((a, b) => a.expand(b))(seedB);
-                            require(newNodes[1].box.contains(datumBox));
+                            assert(newNodes[1].box.contains(datumBox));
                         }
                     }
                     tree.pruneEmpty(subTree, orphanStack);
@@ -933,7 +933,7 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
                 }
             }
             else
-                require(0, "dead end 2");
+                unreachable;
         }
         else if (subTree.front.type == ReferenceType.Types.nonLeaf)
         {
@@ -968,7 +968,7 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
                             insert(tree, o, originalSubTreeLength, orphanStack);
                         }
                         else
-                            require(0);
+                            unreachable;
                         return;
                     }
                     else
@@ -1016,7 +1016,7 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
                     {
                         subTree.popFront;
                         size_t deadNodeIndex = subTree.front.node[].countUntil!(n => n == deadNode);
-                        require(deadNodeIndex != size_t.max);
+                        assert(deadNodeIndex != size_t.max);
                         subTree.front.node.removeEntryFromNode(deadNodeIndex);
 
                         tree.pruneEmpty(subTree, orphanStack);
@@ -1049,7 +1049,7 @@ private void insert(RTree, R, S, B)(ref RTree tree, auto ref R datum,
             }
         }
         else
-            require(0, "dead end 3");
+            unreachable;
     }
 }
 
@@ -1160,7 +1160,7 @@ private void updateBoxes(RTree, NodeStackType)(ref RTree tree, ref NodeStackType
 {
     import std.algorithm.iteration : fold, map;
     alias BoxType = RTree.BoxType;
-    require(!nodeStack.empty);
+    assert(!nodeStack.empty);
 
     BoxType oldBox = nodeStack.front.box;
 
@@ -1202,7 +1202,7 @@ private void pruneEmpty(RTree, NodeStackType)(
     import std.algorithm.searching : countUntil;
     import std.range : walkLength;
     alias ReferenceType = RTree.ReferenceType;
-    require(nodeStack.front.type != tree.ReferenceType.Types.leaf);
+    assert(nodeStack.front.type != tree.ReferenceType.Types.leaf);
     while (/+nodeStack.front.node[].walkLength < tree.minChildrenPerNode && +/nodeStack.length > 1)
     {
         if (nodeStack.front.node[].walkLength == 1
@@ -1220,7 +1220,7 @@ private void pruneEmpty(RTree, NodeStackType)(
             nodeStack.front.node.eraseNode;
             nodeStack.popFront;
             auto killNIndex = nodeStack.front.node[].countUntil!(n => n == sentencedNode);
-            require(killNIndex != size_t.max);
+            assert(killNIndex != size_t.max);
             removeEntryFromNode(nodeStack.front.node, killNIndex);
             dispose(tree.nodeAllocator, &(sentencedNode.node()));
         }
@@ -1263,7 +1263,7 @@ void remove(RTree, ElementType)(ref RTree tree, auto ref ElementType element)
         orphanStack.destroy;
         fr.nodeStack.destroy;
     }
-    require(fr.index != size_t.max, "element not found in tree");
+    assert(fr.index != size_t.max, "element not found in tree");
     removeEntryFromNode(fr.nodeStack.front.leaf, fr.index);
 
     if (fr.nodeStack.front.leaf.length < tree.minChildrenPerNode)
@@ -1273,7 +1273,7 @@ void remove(RTree, ElementType)(ref RTree tree, auto ref ElementType element)
         RTree.LeafType* orphanElementsNode = &(fr.nodeStack.front.leaf());
         fr.nodeStack.popFront;
         size_t killIndex = fr.nodeStack.front.node[].countUntil!(n => n == ReferenceType(*orphanElementsNode));
-        require(killIndex != size_t.max);
+        assert(killIndex != size_t.max);
         removeEntryFromNode(fr.nodeStack.front.node, killIndex);
 
         tree.pruneEmpty(fr.nodeStack, orphanStack);
@@ -1349,12 +1349,12 @@ private auto splitFull(RTree, N)(ref RTree tree, ref N node)
     {
         import std.algorithm.searching : all;
         alias ChildType = ReferenceType;
-        require(node[].all!(n => !n.isNull));
+        assert(node[].all!(n => !n.isNull));
     }
     else static if (is(N == RTree.LeafType))
     {
         alias ChildType = RTree.ElementType;
-        require(node.length == node.childCount);
+        assert(node.length == node.childCount);
     }
 
     import std.conv : to;
@@ -1398,7 +1398,7 @@ private auto splitFull(RTree, N)(ref RTree tree, ref N node)
 
     foreach (dimension; 0 .. dimensionCount * (sortBothDirs ? 2 : 1))
     {
-        require((maxChildrenPerNode - 2 * minChildrenPerNode + 2) > 0);
+        assert((maxChildrenPerNode - 2 * minChildrenPerNode + 2) > 0);
         //foreach (k; 0 .. maxEntriesPerPage - 2 * minEntriesPerPage + 2)
         foreach (k; 0 .. maxChildrenPerNode - minChildrenPerNode * 2 + 1)
         {
@@ -1422,7 +1422,7 @@ private auto splitFull(RTree, N)(ref RTree tree, ref N node)
                 .fold!((a, b) => a.expand(b))(emptyA);
             foreach (ref e; groupA[])
             {
-                require(boxA.contains(RTree.getBounds(e)));
+                assert(boxA.contains(RTree.getBounds(e)));
             }
             auto boxB = groupB[]
                 .drop(is(ChildType == ElementType) && RTree.pointsOnly ? 1 : 0)
@@ -1430,7 +1430,7 @@ private auto splitFull(RTree, N)(ref RTree tree, ref N node)
                 .fold!((a, b) => a.expand(b))(emptyB);
             foreach (ref e; groupB[])
             {
-                require(boxB.contains(RTree.getBounds(e)));
+                assert(boxB.contains(RTree.getBounds(e)));
             }
             immutable perimeterA = boxA.size.v[].sum ^^ 2;
             immutable perimeterB = boxB.size.v[].sum ^^ 2;
@@ -1446,7 +1446,7 @@ private auto splitFull(RTree, N)(ref RTree tree, ref N node)
         }
     }
 
-    require(bestGroupA.length + bestGroupB.length == tree.maxChildrenPerNode);
+    assert(bestGroupA.length + bestGroupB.length == tree.maxChildrenPerNode);
 
     // put selections into newly allocated nodes
     auto newNodeA = make!N(tree.nodeAllocator);
@@ -1463,21 +1463,21 @@ private auto splitFull(RTree, N)(ref RTree tree, ref N node)
     }
     else
     {
-        require((*newNodeA)[].walkLength + (*newNodeB)[].walkLength == tree.maxChildrenPerNode);
+        assert((*newNodeA)[].walkLength + (*newNodeB)[].walkLength == tree.maxChildrenPerNode);
     }
     foreach (ref e; node[])
     {
         import std.algorithm.searching : canFind;
-        require((*newNodeA)[].canFind(e)
+        assert((*newNodeA)[].canFind(e)
                 || (*newNodeB)[].canFind(e));
     }
     foreach (ref e; (*newNodeA)[])
     {
-        require(newNodeA.box.contains(RTree.getBounds(e)));
+        assert(newNodeA.box.contains(RTree.getBounds(e)));
     }
     foreach (ref e; (*newNodeB)[])
     {
-        require(newNodeB.box.contains(RTree.getBounds(e)));
+        assert(newNodeB.box.contains(RTree.getBounds(e)));
     }
 
     // destroy original node as long as it's not the root
@@ -1568,7 +1568,7 @@ private Tuple!(Stack!(RTree.ReferenceType), "nodeStack", size_t, "index")
                 stderr.writeln;
                 prevBox = el.box;
             }
-            require(0);
+            unreachable;
         }
 
         stderr.writeln("really not in tree");
@@ -1605,7 +1605,7 @@ private Tuple!(Stack!(RTree.ReferenceType), "nodeStack", size_t, "index")
             if (arrStack.front.front.node.box.contains(RTree.getBounds(entry)) || exhaustive)
             {
                 foreach (e; arrStack.front.front.node[])
-                    require(arrStack.front.front.node.box.contains(e.box));
+                    assert(arrStack.front.front.node.box.contains(e.box));
                 arrStack.pushFront(arrStack.front.front.node.children);
             }
             else

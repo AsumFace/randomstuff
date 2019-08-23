@@ -30,7 +30,6 @@ import std.experimental.allocator.building_blocks.allocator_list;
 import std.experimental.allocator.building_blocks.bitmapped_block;
 import std.experimental.allocator.mallocator;
 import std.experimental.allocator;
-import sqbox;
 
 /**
 A range to search for matching elements within an `RTree`. `ref` access is provided in order to be able to change
@@ -40,7 +39,7 @@ The range can either accept dynamically exchangable, or static predicate callabl
 it shall have the type of a common data storage type, such as a `Tuple`. This auxiliary data is returned by `front` as
 part of a `Tuple` and is meant to make basic data exchange between the predicates and the range interface possible.
 */
-private struct RTreeRange(RTree, bool dynamic, A...)
+struct RTreeRange(RTree, bool dynamic, A...)
 
 {
     alias ReferenceType = RTree.ReferenceType;
@@ -1242,14 +1241,14 @@ Equivalence is defined by the `==` operator for `ElementType`. Only one element 
 one element matches the given one, the first one found is removed, others stay in the tree.
 May invalidate pointers to elements.
 
-Asserts:
-    Whether element is actually in tree.
+Return:
+    Whether an element has been removed. Only returns false if no matching element exists.
 
 Params:
     tree = the tree to operate on
     element = an element equivalent to the one to be removed
 */
-void remove(RTree, ElementType)(ref RTree tree, auto ref ElementType element)
+bool remove(RTree, ElementType)(ref RTree tree, auto ref ElementType element)
     if (is(ElementType == RTree.ElementType))
 {
     import std.stdio;
@@ -1263,9 +1262,8 @@ void remove(RTree, ElementType)(ref RTree tree, auto ref ElementType element)
         orphanStack.destroy;
         fr.nodeStack.destroy;
     }
-    assert(fr.index != size_t.max, "element not found in tree");
-    removeEntryFromNode(fr.nodeStack.front.leaf, fr.index);
-
+    if (fr.index != size_t.max)
+        return false;
     if (fr.nodeStack.front.leaf.length < tree.minChildrenPerNode)
     {
         import std.algorithm.searching : countUntil;
@@ -1278,7 +1276,6 @@ void remove(RTree, ElementType)(ref RTree tree, auto ref ElementType element)
 
         tree.pruneEmpty(fr.nodeStack, orphanStack);
 
-
         if (!fr.nodeStack.front.node[].empty)
             tree.updateBoxes(fr.nodeStack);
         else
@@ -1286,11 +1283,6 @@ void remove(RTree, ElementType)(ref RTree tree, auto ref ElementType element)
 
         while (!orphanStack.empty)
         {
-        /+if (gfile.isOpen)
-        {
-            gfile.rewind;
-            tree.drawTree(nullSink, gwriter);
-        }+/
             tree.insert(orphanStack.front);
             orphanStack.popFront;
         }
@@ -1298,13 +1290,6 @@ void remove(RTree, ElementType)(ref RTree tree, auto ref ElementType element)
         import std.range;
         foreach (i, ref e; (*orphanElementsNode)[])
         {
-            /+import std.range;
-            import std.stdio;
-            import std.format;
-            auto file = File(format!"trees/g%06s-%04s.dot"(cnt++, i), "w");
-            auto w = file.lockingTextWriter;
-            tree.drawTree(nullSink, w);
-            file.close;+/
             tree.insert(e);
 
         }
@@ -1325,6 +1310,7 @@ void remove(RTree, ElementType)(ref RTree tree, auto ref ElementType element)
         +/fr.nodeStack.popFront;
         tree.updateBoxes(fr.nodeStack);
      }
+     return true;
 }
 import std.range;
 import std.stdio;
@@ -1693,7 +1679,7 @@ void finn()
         //return BoxType(n.data, 1);
     }
     RTree!(typeof(pnnn.front), calcElementBounds, 8, 4) tree;
-    tree.initialize;    
+    tree.initialize;
 
     dirEntries("trees/", SpanMode.shallow, false).each!(std.file.remove);
     byte[ElementType] elems;

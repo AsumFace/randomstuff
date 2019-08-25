@@ -30,7 +30,7 @@ size_t ZSTD_findFrameCompressedSize(const(void)* src, size_t srcSize);
 
 size_t ZSTD_compressBound(size_t srcSize)
 {
-    return ((srcSize) + ((srcSize)>>8) + (((srcSize) < (128<<10)) ? (((128<<10) - (srcSize)) >> 11) : 0));
+    return ((srcSize) + ((srcSize) >> 8) + (((srcSize) < (128 << 10)) ? (((128 << 10) - (srcSize)) >> 11) : 0));
 }
 
 uint ZSTD_isError(size_t code);
@@ -41,6 +41,11 @@ int ZSTD_maxCLevel();
 struct ZSTD_CCtx;
 ZSTD_CCtx* ZSTD_createCCtx();
 size_t ZSTD_freeCCtx(ZSTD_CCtx* cctx);
+
+size_t ZSTD_compressCCtx(ZSTD_CCtx* cctx,
+    void* dst, size_t dstCapacity,
+    const(void)* src, size_t srcSize,
+    int compressionLevel);
 
 struct ZSTD_DCtx;
 ZSTD_DCtx* ZSTD_createDCtx();

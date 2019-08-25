@@ -17,12 +17,6 @@ import std.experimental.allocator.building_blocks.allocator_list;
 import std.experimental.allocator.gc_allocator;
 import required;
 
-class AllocationFailure : Exception
-{
-    import std.exception;
-    mixin basicExceptionCtors;
-}
-
 FallbackAllocator!(AllocatorList!((n => BitmappedBlock!(1024,
                                                      platformAlignment,
                                                      Mallocator,
@@ -35,6 +29,7 @@ A loosely stack-like data structure using manual memory management.
 */
 struct Stack(T)
 {
+    nothrow:
     import std.experimental.allocator;
     import std.exception;
 
@@ -47,11 +42,16 @@ struct Stack(T)
             entryStore = makeArray!T(stackAllocator, size);
         //else
         //    entryStore = new T[size];
-        enforce(entryStore !is null, new AllocationFailure("Stack construction failed due to allocation failure"));
+        if (entryStore is null)
+            assert(0,"Stack construction failed due to allocation failure");
     }
     ref T opIndex(size_t i)
     {
         return entries[i];
+    }
+    T[] opIndex()
+    {
+        return entries[];
     }
     size_t opDollar()
     {
@@ -78,7 +78,8 @@ struct Stack(T)
         if (entries.length > 0)
         {
             T[] newStore = makeArray!T(stackAllocator, entries.length);
-            enforce(newStore !is null, new AllocationFailure("Stack duplication failed due to allocation failure"));
+            if (newStore is null)
+                assert(0, "Stack duplication failed due to allocation failure");
             newStore[] = entries[];
             result.entryStore = newStore;
             result.entries = newStore;
@@ -153,7 +154,8 @@ struct Stack(T)
         if (entryStore is null)
         {
             T[] newStore = makeArray!T(stackAllocator, 8);
-            enforce(newStore !is null, new AllocationFailure("Stack expansion failed due to allocation failure"));
+            if (newStore is null)
+                assert(0, "Stack expansion failed due to allocation failure");
             entryStore = newStore;
         }
         if (entries.length != 0
@@ -169,7 +171,7 @@ struct Stack(T)
             {
                 import std.algorithm.comparison : max;
                 // TODO: try regular allocation if expansion fails
-                if (!expandArray(stackAllocator, entryStore, max(entryStore.length, 8))),
+                if (!expandArray(stackAllocator, entryStore, max(entryStore.length, 8)))
                         assert(0, "Stack expansion failed due to allocation failure");
             }
         }

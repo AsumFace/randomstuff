@@ -18,6 +18,9 @@ import std.meta;
 
 alias c_string = const(char)*;
 
+
+nothrow:
+extern(C):
 // port of fuse_opt.h
 
 struct fuse_opt
@@ -227,7 +230,6 @@ struct fuse_config
 
 struct fuse_operations
 {
-    extern(C):
     int function(c_string, stat_t*, fuse_file_info* fi) getattr;
     int function(c_string, char*, size_t) readlink;
     int function(c_string, mode_t, dev_t) mknod;
@@ -241,8 +243,8 @@ struct fuse_operations
     int function(c_string, uid_t, gid_t, fuse_file_info* fi) chown;
     int function(c_string, off_t, fuse_file_info* fi) truncate;
     int function(c_string, fuse_file_info*) open;
-    int function(c_string, char*, size_t, off_t, fuse_file_info*) read;
-    int function(c_string, c_string, size_t, off_t, fuse_file_info*) write;
+    int function(c_string, ubyte*, size_t, off_t, fuse_file_info*) read;
+    int function(c_string, const(ubyte)*, size_t, off_t, fuse_file_info*) write;
     int function(c_string, statvfs_t*) statfs;
     int function(c_string, fuse_file_info*) flush;
     int function(c_string, fuse_file_info*) release;
@@ -268,7 +270,7 @@ struct fuse_operations
     int function(c_string, fuse_bufvec** bufp, size_t size, off_t off, fuse_file_info*) read_buf;
     int function(c_string, fuse_file_info*, int op) flock;
     int function(c_string, int, off_t, off_t, fuse_file_info*) fallocate;
-    ptrdiff_t function(c_stringpath_in, fuse_file_info* fi_in, off_t offset_in, c_string path_out,
+    ptrdiff_t function(c_string path_in, fuse_file_info* fi_in, off_t offset_in, c_string path_out,
         fuse_file_info* fi_out, off_t offset_out, size_t size, int flags) copy_file_range;
 }
 

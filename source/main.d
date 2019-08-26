@@ -6,6 +6,14 @@
 |      https://www.boost.org/LICENSE_1_0.txt                   |
 \+------------------------------------------------------------+/
 
+import core.sys.posix.sys.mman;
+import core.sys.linux.sys.mman;
+import core.sys.posix.poll;
+import core.sys.posix.pthread;
+import core.sys.posix.unistd;
+import core.sys.posix.fcntl : posix_open = open, O_CREAT, O_EXCL;
+import core.sys.posix.stdio : fdopen;
+import core.sys.posix.sys.ioctl;
 import bindbc.glfw;
 import bindbc.opengl;
 //import arsd.simpledisplay;
@@ -19,23 +27,47 @@ import std.experimental.checkedint;
 import std.algorithm;
 import std.typecons;
 import std.format;
+import std.range;
 import std.experimental.allocator;
-void main()
+import zefs;
+import fuse;
+
+extern(C) void* start_fuse(void* arg)
+{
+    string[]* args = cast(string[]*)arg;
+    char[] mp = "zefs\0".dup;
+    char[] o1 = "-f\0".dup;
+    char[] o2 = "-d\0".dup;
+    char[] o3 = "-s\0".dup;
+    char*[] fargs = [cast(char*)args[0].dup.ptr, o1.ptr, o2.ptr, o3.ptr, mp.ptr];
+    auto fuse_status = fuse_main_real(5, fargs.ptr, &oper, oper.sizeof, null);
+    if (fuse_status != 0)
+        assert(0);
+    return null;
+}
+
+void main(string[] args)
 {
     import sedectree;
-    ulong re;
-    while (true)
-    {
-        Thread.sleep(1.seconds);
-        ubyte[] allo = sedecAllocator.makeArray!ubyte(100_000_000);
-        if (allo is null)
-            assert(0);
-        foreach (i; 0 .. 100_000_000)
-            allo[i] = cast(ubyte)i;
-        writeln("alloc");
-    }
 
-    stderr.writefln!"result: %s"(re);
+
+    pthread_t thread;
+    pthread_create(&thread, null, &start_fuse, cast(void*)&args);
+
+    writefln("something");
+    Thread.sleep(1.seconds);
+    writefln("something");
+    FILE* _ff = fdopen(posix_open("zefs/something", O_CREAT | O_EXCL), "w");
+    File ff = File.wrapFile(_ff);
+    ff.rawWrite(iota(0, 10000000).array);
+    ff.seek(0);
+    int[] backbuf = new int[iota(0, 10000000).length];
+    ff.rawRead(backbuf[]);
+    writeln(backbuf);
+
+
+
+
     assert(0);
     alias tty = ushort;
     auto tree = sedecTree!(tty)();

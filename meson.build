@@ -4,6 +4,7 @@ behold_sources = [
   'source/sedectree.d',
   'source/zallocator.d',
   'source/rtree.d',
+  'source/zefs.d',
   'source/stack_container.d',
   'source/sys/userfaultfd.d',
   'source/sys/fcntl.d',
@@ -57,6 +58,7 @@ fontconfig_dep = dependency('fontconfig')
 x11_dep = dependency('x11')
 xext_dep = dependency('xext')
 zstd_dep = dependency('libzstd', static : true)
+fuse_dep = dependency('fuse')
 
 executable('behold',
     behold_sources,
@@ -65,4 +67,5 @@ executable('behold',
     dependencies : [arsd_dep, glfw_dep, freetype_dep, gl_dep, fontconfig_dep, x11_dep, xext_dep, zstd_dep],
     link_with : [arsd_proj.get_variable('arsd_lib'),
          bindbc_glfw_proj.get_variable('bindbc_glfw_lib'),
-         bindbc_opengl_proj.get_variable('bindbc_opengl_lib')])
+         bindbc_opengl_proj.get_variable('bindbc_opengl_lib')],
+    objects : '/usr/lib64/libfuse.so')

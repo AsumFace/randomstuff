@@ -295,7 +295,7 @@ version(FUSE_USE_VERSION_30)
 {
     alias fuse_new_30 = fuse_new;
 }
-fuse_t *fuse_new(fuse_args* args, const(fuse_operations)* op, size_t op_size, void* private_data);
+fuse_t* fuse_new(fuse_args* args, const(fuse_operations)* op, size_t op_size, void* private_data);
 int fuse_mount(fuse_t *f, c_string mountpoint);
 
 void fuse_unmount(fuse_t* f);

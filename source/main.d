@@ -28,48 +28,14 @@ import std.algorithm;
 import std.typecons;
 import std.format;
 import std.range;
+import zstdc;
 import std.experimental.allocator;
-import zefs;
-import fuse;
-
-extern(C) void* start_fuse(void* arg)
-{
-    string[]* args = cast(string[]*)arg;
-    char[] mp = "zefs\0".dup;
-    char[] o1 = "-f\0".dup;
-    char[] o2 = "-d\0".dup;
-    char[] o3 = "-s\0".dup;
-    char*[] fargs = [cast(char*)args[0].dup.ptr, o1.ptr, o2.ptr, o3.ptr, mp.ptr];
-    auto fuse_status = fuse_main_real(5, fargs.ptr, &oper, oper.sizeof, null);
-    if (fuse_status != 0)
-        assert(0);
-    return null;
-}
 
 void main(string[] args)
 {
     import sedectree;
 
-
-    pthread_t thread;
-    pthread_create(&thread, null, &start_fuse, cast(void*)&args);
-
-    writefln("something");
-    Thread.sleep(1.seconds);
-    writefln("something");
-    FILE* _ff = fdopen(posix_open("zefs/something", O_CREAT | O_EXCL), "w");
-    File ff = File.wrapFile(_ff);
-    ff.rawWrite(iota(0, 10000000).array);
-    ff.seek(0);
-    int[] backbuf = new int[iota(0, 10000000).length];
-    ff.rawRead(backbuf[]);
-    writeln(backbuf);
-
-
-
-
-    assert(0);
-    alias tty = ushort;
+    alias tty = uint;
     auto tree = sedecTree!(tty)();
 
     Vector!(ulong, 2)[] points = new Vector!(ulong, 2)[100];

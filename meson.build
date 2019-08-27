@@ -2,9 +2,7 @@ project('behold', 'd')
 
 behold_sources = [
   'source/sedectree.d',
-  'source/zallocator.d',
   'source/rtree.d',
-  'source/zefs.d',
   'source/stack_container.d',
   'source/sys/userfaultfd.d',
   'source/sys/fcntl.d',
@@ -19,7 +17,6 @@ behold_sources = [
   'source/main.d',
   'source/word.d',
   'source/zstdc.d',
-  'source/fuse.d'
 ]
 
 inc_dirs = [

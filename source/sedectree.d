@@ -44,9 +44,9 @@ enum ChildTypes
     allTrue = 0b0001, // a bool cast to this enum shall produce either allFalse or allTrue depending on its value
     thisPtr = 0b0010,
 }
-import zallocator;
-//alias SedecAllocator = Mallocator;
-alias sedecAllocator = ZAllocator.instance;
+
+alias SedecAllocator = Mallocator;
+alias sedecAllocator = SedecAllocator.instance;
 
 /+debug
     enum ulong byOffsetFlag = 0b1000;
@@ -300,15 +300,30 @@ struct SedecTree(AddressType)
     {
         return _opIndex(cast(AddressType)i1, cast(AddressType)i2,
             root,
-            Vector!(AddressType, 2)(AddressType.min),
-            0);
+            Vector!(AddressType, 2)(AddressType.min));
     }
-
-    ChildTypes _opIndex(NT)(AddressType i1, AddressType i2, NT* activeNode, Vector!(AddressType, 2) begin, int depth)
+    ChildTypes _opIndex(NT)(AddressType i1, AddressType i2, NT* activeNode, Vector!(AddressType, 2) begin)
         if (isInstanceOf!(SedecNode, NT))
         in(activeNode !is null && &*activeNode)
     {
         import std.math;
+        static assert(cacheLevel.isPowerOf2);
+
+        static if (is(NT == TopNodeType))
+        {
+            //writefln!"aCache.coor: %s; ours: %s"(aCache.coor, Vector!(AddressType, 2)(i1, i2) & ~(cast(AddressType)cacheLevel - 1));
+            if (aCache.node !is null && (Vector!(AddressType, 2)(i1, i2) & ~(cast(AddressType)cacheLevel - 1)) == aCache.coor)
+            {
+                //writeln("cache hit ", cache_hits++);
+                return _opIndex(i1, i2, cast(SedecNode!(AddressType, cacheLevel)*)aCache.node, aCache.coor);
+            }
+        }
+        //writeln(NT.fWidth);
+        static if (NT.fWidth == cacheLevel)
+        {
+            aCache.node = activeNode;
+            aCache.coor = begin;
+        }
         while (true)
         {
             import std.range;
@@ -328,7 +343,7 @@ struct SedecTree(AddressType)
                 return cast(ChildTypes)-1;
             }
             else if (result == ChildTypes.thisPtr) // just jump into the next lower division and repeat
-                return _opIndex(i1, i2, (*activeNode)[subIdx].thisPtr, begin + NT.fWidth * subIdx, depth + 1);
+                return _opIndex(i1, i2, (*activeNode)[subIdx].thisPtr, begin + NT.fWidth * subIdx);
             unreachable;
         }
     }
@@ -376,6 +391,7 @@ struct SedecTree(AddressType)
 
 
     Tuple!(Vector!(AddressType, 2), "coor", void*, "node") aCache;
+    enum cacheLevel = 64 * 4;
     import std.algorithm : all, among;
     void setPixel(NT)(
             NT* node,
@@ -387,18 +403,17 @@ struct SedecTree(AddressType)
         in(NT.fWidth != 1 || (*node)[].all!(n => !n.type.among(ChildTypes.thisPtr)))
     {
         import core.bitop;
-        enum cacheLevel = 64;
         static assert(cacheLevel.isPowerOf2);
 
         static if (is(NT == TopNodeType))
         {
-            if (aCache.node !is null && (coor % cast(AddressType)cacheLevel) == aCache.coor)
+            if (aCache.node !is null && (coor & ~(cast(AddressType)cacheLevel - 1)) == aCache.coor)
             {
-                setPixel(cast(SedecNode!(AddressType, 64)*)aCache.node, coor, aCache.coor, value);
+                setPixel(cast(SedecNode!(AddressType, cacheLevel)*)aCache.node, coor, aCache.coor, value);
                 return;
             }
         }
-        if (NT.fWidth == cacheLevel)
+        static if (NT.fWidth == cacheLevel)
         {
             aCache.node = node;
             aCache.coor = begin;
@@ -436,7 +451,7 @@ struct SedecTree(AddressType)
     {
         static assert(NT.fWidth > 1);
         auto newNode = sedecAllocator.make!(NT.ChildNodeType);
-        stderr.writefln!"%s"(cast(ulong)newNode);
+        //stderr.writefln!"%s"(cast(ulong)newNode);
         if (newNode is null)
             assert(0, "allocation failure");
 

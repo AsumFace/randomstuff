@@ -152,14 +152,14 @@ void main(string[] args)
     window.glfwSetScrollCallback(&scrollCallback);
     window.glfwSetKeyCallback(&keyCallback);
 
-        enum scale = 20;
+        enum scale = 100;
             nvg.beginFrame(width, height);
             scope(exit) nvg.endFrame();
 import arsd.color;
-            ubyte[] imgdata = new ubyte[scale*scale*1500UL*1000*4];
+            ubyte[] imgdata = new ubyte[scale*scale*0];
             imgdata.fill(cast(ubyte[])[0,0,0,255]);
             writeln(imgdata.length);
-            auto loo = new TrueColorImage(1500*scale, 1000*scale, imgdata);
+            auto loo = new TrueColorImage(0, 0, imgdata);
             MemoryImage canvas = loo;
             auto img = nvg.createImageFromMemoryImage(canvas);
 
@@ -188,32 +188,73 @@ import arsd.color;
 
         auto bbb = MonoTime.currTime;
         writefln("begin time: %s", bbb - trig);
-
-        tree.genericFill(tree.checkerPattern(), true);
         tree.genericFill(dif, true);
 
         writefln("render time: %s", MonoTime.currTime - bbb);
         writefln("end time: %s", MonoTime.currTime - trig);
         import arsd.png;
 
-        auto pbm = File("seq/result.pbm", "w");
-        auto pbmwriter = pbm.lockingTextWriter;
-        pbmwriter.formattedWrite("P1\n%s %s\n", 1500*scale, 1000*scale);
+        ZSTD_CCtx* cctx = ZSTD_createCCtx;
+        ZSTD_inBuffer in_buf;
+        ZSTD_outBuffer out_buf;
+
+        auto pbm = File("seq/result.pbm.zst", "w");
+        auto pbmwriter = pbm.lockingBinaryWriter;
+
 
         ChildTypes[] buf = new ChildTypes[1500 * scale];
-        char[] buf2 = new char[1500 * scale * 2];
+        char[] buf2 = new char[1500 * scale * 2 + 1];
+        buf2[$ - 1] = '\n';
+        ubyte[] buf3 = new ubyte[1500 * scale * 2];
+        in_buf.src = buf2.ptr;
+        out_buf.dst = buf3.ptr;
+        out_buf.size = buf3.length;
+        ulong status;
+        ulong read_size;
+        ZSTD_CCtx_setParameter(cctx, ZSTD_cParameter.ZSTD_c_compressionLevel, 3);
+        ZSTD_CCtx_setParameter(cctx, ZSTD_cParameter.ZSTD_c_enableLongDistanceMatching, 1);
+        {
+            char[] header = buf2.sformat("P1\n%s %s\n", 1500*scale, 1000*scale);
+            in_buf.size = header.length;
+            read_size += in_buf.size;
+            status = cctx.ZSTD_compressStream2(&out_buf, &in_buf, ZSTD_EndDirective.ZSTD_e_continue);
+            if (ZSTD_isError(status))
+                assert(0, ZSTD_getErrorName(status).fromStringz);
+        }
+        in_buf.pos = 0;
+        in_buf.size = buf2.length;
 
+        ulong written_size;
         foreach (y; 0 .. 1000 * scale)
         {
             foreach (x; 0 .. 1500 * scale)
                 buf[x] = tree[x, y];
             foreach (x; 0 .. 1500 * scale)
                 (buf[x] == ChildTypes.allTrue ? "1 " : "0 ").copy(buf2[x * 2 .. (x * 2) + 2]);
-            buf2.copy(pbmwriter);
+            in_buf.pos = 0;
+            read_size += in_buf.size;
+
+            while (in_buf.pos != in_buf.size)
+            {
+                status = cctx.ZSTD_compressStream2(&out_buf, &in_buf, ZSTD_EndDirective.ZSTD_e_continue);
+                if (ZSTD_isError(status))
+                    assert(0, ZSTD_getErrorName(status).fromStringz);
+                if (out_buf.pos == out_buf.size) // flush output buffer
+                {
+                    out_buf.pos = 0;
+                    written_size += buf3.length;
+                    buf3.copy(pbmwriter);
+                }
+            }
             if (y % 128 == 0)
-                stderr.writef("\r%-20s", y);
+                stderr.writef("\rline: %-20s; written: %s; read: %s", y, formatBytes(written_size), formatBytes(read_size));
         }
+        status = cctx.ZSTD_compressStream2(&out_buf, &in_buf, ZSTD_EndDirective.ZSTD_e_end);
+        if (ZSTD_isError(status))
+            assert(0, ZSTD_getErrorName(status).fromStringz);
+        buf3[0 .. out_buf.pos].copy(pbmwriter);
         pbm.close;
+        ZSTD_freeCCtx(cctx);
         //writePng("seq/result.png", tree.target);
         /+tree.unionFill(body2, &body1);
 

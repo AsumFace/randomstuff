@@ -53,19 +53,30 @@ alias sedecAllocator = SedecAllocator.instance;
 else
     enum ulong byOffsetFlag = 0;
 +/
-struct SedecNode(AddressType, AddressType _fWidth)
+struct SedecNode(AddressType, AddressType _fWidth, uint _divisor)
     if (isIntegral!AddressType && isUnsigned!AddressType)
 {
+    alias divisor = _divisor;
+    static assert(divisor.isPowerOf2 && divisor != 0);
     alias fWidth = _fWidth;
     static assert(fWidth.isPowerOf2);
     static assert(this.sizeof % ulong.sizeof == 0);
+
     static if (fWidth > 1)
     {
-        alias isBottom = Alias!false;
-        alias ChildNodeType = SedecNode!(AddressType, fWidth / 4);
+        enum isBottom = false;
+        static if (fWidth / divisor == 0)
+        {
+            alias ChildNodeType = SedecNode!(AddressType, 1, fWidth);
+        }
+        else
+        {
+            alias ChildNodeType = SedecNode!(AddressType, fWidth / divisor, divisor);
+        }
     }
     else
-        alias isBottom = Alias!true;
+        enum isBottom = true;
+
     debug ulong _protector = 0xdeadbeef01cecafe;
     debug ulong _fWidth_check = fWidth;
     debug enum _Kinds : ubyte {
@@ -73,12 +84,16 @@ struct SedecNode(AddressType, AddressType _fWidth)
         nil,
         pointer
     }
-    debug _Kinds[16] _kind;
-    debug ulong[16] _srcLines;
-    private Word!(16, 0xf) _type;
-    private ChildStore[16] _children;
+    debug _Kinds[divisor ^^ 2] _kind;
+    debug ulong[divisor ^^ 2] _srcLines;
+    private Word!(divisor ^^ 2, 0xf) _type;
+    static if (!isBottom)
+        private ChildStore[divisor ^^ 2] _children;
 
-    static assert(_type.sizeof == 8); // should be packed exactly with no padding
+    static assert(divisor != 16 || _type.sizeof == 128);
+    static assert(divisor != 8 || _type.sizeof == 32);
+    static assert(divisor != 4 || _type.sizeof == 8); // should be packed exactly with no padding
+    static assert(divisor != 2 || _type.sizeof == 2);
     invariant
     {
         debug assert(cast(size_t)&this % ulong.sizeof == 0, "Node does not have proper alignment");
@@ -86,7 +101,7 @@ struct SedecNode(AddressType, AddressType _fWidth)
         debug assert(_fWidth_check == fWidth, format("node should have fWidth %s, but has %s", fWidth, _fWidth_check));
         assert(null is cast(void*)0, "null pointer does not point to 0. this code assumes that");
         //assert(cast(size_t)&this < 0xff00000000000000);
-        foreach (i; 0 .. 16)
+        foreach (i; 0 .. divisor ^^ 2)
         {
             import std.stdio;
             import std.algorithm;
@@ -103,14 +118,9 @@ struct SedecNode(AddressType, AddressType _fWidth)
     private union ChildStore
     {
         ulong raw;
-        void[8] data;
-
         static if (!isBottom)
         {
-            ulong compressedOffset;
-            ulong thisOffset;
-            SedecNode!(AddressType, fWidth / 4)* thisPtr;
-            ubyte* compressed;
+            ChildNodeType* thisPtr;
         }
     }
 
@@ -165,15 +175,15 @@ struct SedecNode(AddressType, AddressType _fWidth)
 
     auto opIndex(V)(V v)
         if (isInstanceOf!(Vector, V))
-        in(v.x < 4)
-        in(v.y < 4)
+        in(v.x < divisor)
+        in(v.y < divisor)
     {
-        return opIndex(v.x + 4 * v.y);
+        return opIndex(v.x + divisor * v.y);
     }
 
     auto opSlice(ulong begin, ulong end)
-        in(begin <= 15)
-        in(end <= 16)
+        in(begin < divisor ^^ 2)
+        in(end <= divisor ^^ 2)
     {
         struct NodeRange
         {
@@ -210,12 +220,12 @@ struct SedecNode(AddressType, AddressType _fWidth)
 
     auto opIndex()
     {
-        return opSlice(0, 16);
+        return opSlice(0, divisor ^^ 2);
     }
 
     auto opIndex(I)(I i)
         if (isIntegral!I)
-        in(i < 16, format!"index %s is out of bounds! ([0 .. 16])"(i))
+        in(i < divisor ^^ 2, format!"index %s is out of bounds! ([0 .. %s])"(i, divisor))
     {
         struct ChildObject
         {
@@ -231,7 +241,8 @@ struct SedecNode(AddressType, AddressType _fWidth)
             {
                 debug context._kind[i] = _Kinds.nil;
                 context._type[i] = val;
-                context._children[i].raw = 0;
+                static if (!isBottom)
+                    context._children[i].raw = 0;
                 return val;
             }
             ChildTypes type() const
@@ -261,31 +272,27 @@ struct SedecNode(AddressType, AddressType _fWidth)
                     return val;
                 }
             }
-            void[] data()
-                in(!type.among(ChildTypes.allTrue, ChildTypes.allFalse))
-            {
-                return context._children[i].data[];
-            }
         }
         return ChildObject(&this, cast(ubyte)i);
     }
 }
 
 
-auto sedecTree(AddressType)()
+auto sedecTree(AddressType, uint divisor)()
     if (isIntegral!AddressType)
 {
-    auto result = SedecTree!(AddressType)();
+    auto result = SedecTree!(AddressType, divisor)();
     result.root = make!(result.TopNodeType)(sedecAllocator);
     if (result.root is null)
         assert(0, "allocation failure");
     return result;
 }
 
-struct SedecTree(AddressType)
-    if (isIntegral!AddressType)
+struct SedecTree(AddressType, uint divisor)
+     if (isIntegral!AddressType)
 {
-    alias TopNodeType = SedecNode!(AddressType, AddressType.max / 4 + 1);
+    static assert(divisor.isPowerOf2 && divisor != 0);
+    alias TopNodeType = SedecNode!(AddressType, AddressType.max / divisor + 1, divisor);
 
     TopNodeType* root;
 
@@ -315,7 +322,7 @@ struct SedecTree(AddressType)
             if (aCache.node !is null && (Vector!(AddressType, 2)(i1, i2) & ~(cast(AddressType)cacheLevel - 1)) == aCache.coor)
             {
                 //writeln("cache hit ", cache_hits++);
-                return _opIndex(i1, i2, cast(SedecNode!(AddressType, cacheLevel)*)aCache.node, aCache.coor);
+                return _opIndex(i1, i2, cast(SedecNode!(AddressType, cacheLevel, divisor)*)aCache.node, aCache.coor);
             }
         }
         //writeln(NT.fWidth);
@@ -391,7 +398,7 @@ struct SedecTree(AddressType)
 
 
     Tuple!(Vector!(AddressType, 2), "coor", void*, "node") aCache;
-    enum cacheLevel = 64 * 4;
+    enum cacheLevel = 16 ^^ 2;
     import std.algorithm : all, among;
     void setPixel(NT)(
             NT* node,
@@ -409,7 +416,7 @@ struct SedecTree(AddressType)
         {
             if (aCache.node !is null && (coor & ~(cast(AddressType)cacheLevel - 1)) == aCache.coor)
             {
-                setPixel(cast(SedecNode!(AddressType, cacheLevel)*)aCache.node, coor, aCache.coor, value);
+                setPixel(cast(SedecNode!(AddressType, cacheLevel, divisor)*)aCache.node, coor, aCache.coor, value);
                 return;
             }
         }
@@ -681,10 +688,10 @@ struct SedecTree(AddressType)
     {
         import std.random;
         import std.range;
-        foreach (i; 0 .. 16)
+        foreach (i; 0 .. NT.divisor ^^ 2)
         {
             fillCost += 1;
-            auto subIdx = cast(Vector!(AddressType, 2))vec2ul(i % 4, i / 4);
+            auto subIdx = cast(Vector!(AddressType, 2))vec2ul(i % NT.divisor, i / NT.divisor);
             auto subBegin = begin + NT.fWidth * subIdx;
             auto result = testFun(cast(AddressType)NT.fWidth, subBegin);
 
@@ -692,64 +699,6 @@ struct SedecTree(AddressType)
             void draw(int col)
             {
                 return;
-/+                import core.thread;
-                //Thread.sleep(100.usecs);
-                if (MonoTime.currTime > trig)
-                {
-                    writeln(trig);
-
-                }
-                else
-                    return;
-                import core.bitop;
-                glFinish();
-                glClearColor(0, 0, 0, 0);
-                glClear(glNVGClearFlags);
-                import std.algorithm : predSwitch;
-
-                //if (fWidth == 16)
-                {
-                /+foreach (y; 0 .. target.height)
-                {
-                    foreach (x; 0 .. target.width)
-                    {
-                        if (!(x >= begin.x && x <= begin.x + fWidth * 4 - 1 && y >= begin.y && y <= begin.y + fWidth * 4 - 1))
-                            continue;
-                        import std.algorithm;
-                        import std.math;
-                        Color baseColor = this[x, y].predSwitch(0, Color.black, 1,
-                            Color(cast(int)((cos(cast(float)ldep)+1)*127),
-                            cast(int)((cos(cast(float)(ldep + 2*PI/3))+1)*127),
-                            cast(int)((cos(cast(float)(ldep + 4*PI/3)))+1)*127), Color.purple);
-                        if (x >= subBegin.x && y >= subBegin.y && x <= subBegin.x + fWidth - 1 && y <= subBegin.y + fWidth - 1)
-                            baseColor = Color.white;
-                        else if ((x == begin.x || y == begin.y || x == begin.x + fWidth * 4 - 1 || y == begin.y + fWidth * 4 - 1)
-                            && (x >= begin.x && x <= begin.x + fWidth * 4 - 1 && y >= begin.y && y <= begin.y + fWidth * 4 - 1))
-                            baseColor = Color.green;
-                        target.setPixel(x, y, baseColor);
-                    }
-                }+/
-
-                nvg.beginFrame(1500, 1000);
-                img = nvg.createImageFromMemoryImage(target, NVGImageFlag.NoFiltering);
-                nvg.beginPath();
-                nvg.rect(0, 0, 15000, 1000);
-                nvg.fillPaint = nvg.imagePattern(0, 0, 1500, 1000, 0, img);
-                nvg.fill();
-                nvg.endFrame;
-
-
-                glfwSwapBuffers(window);
-
-                }import core.bitop;
-                /+writefln("depth: %s; fillCost: %s; filledPixels: %s",
-                    (AddressType.sizeof * 8 / 2) - bsf(fWidth) / 2,
-                    fillCost,
-                    filledPixels);
-                +/import core.thread;
-                trig = MonoTime.currTime + 100.msecs;
-                //Thread.sleep((min(20 * fWidth, fWidth > 500 ? 20 : 500)).msecs);
- +/              // Thread.sleep(20.msecs);
             }
 
             if (NT.fWidth == 1)

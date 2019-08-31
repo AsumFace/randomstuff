@@ -571,16 +571,6 @@ struct SedecTree(AddressType, uint divisor)
         }
     }
 
-    void rectangleFill(
-            Vector!(AddressType, 2) low,
-            Vector!(AddressType, 2) high, // inclusive bound
-            bool val)
-        in(low.x <= high.x)
-        in(low.y <= high.y)
-    {
-        genericFill(Rectangle(low, high), val);
-    }
-
     static struct Circle
     {
         enum isSolidBody = true;
@@ -654,14 +644,6 @@ struct SedecTree(AddressType, uint divisor)
                 return FillValue.mixed;
             return FillValue.none;
         }
-    }
-
-    void circleFill(
-        Vector!(AddressType, 2) center,
-        AddressType radius,
-        bool value)
-    {
-        genericFill(Circle(center, radius), value);
     }
 
     void genericFill(F)(F testFun, bool value)
@@ -747,10 +729,78 @@ struct SedecTree(AddressType, uint divisor)
         }
     }
 
-    static auto UnionBody(T...)(T bodies)
+    static auto negation_body(T)(T body)
+    {
+        _negation_body!T result;
+        static if (!isPointer!T)
+        {
+            result.body = body;
+            result.dlg = &(result.body.opCall);
+        }
+        else
+        {
+            assert(body !is null);
+            result.dlg = &((*body).opCall);
+        }
+        return result;
+    }
+
+    static struct _negation_body(T)
+    {
+        static assert(T.isSolidBody);
+        static if (!isPointer!T)
+            T body;
+        FillValue delegate(AddressType, Vector!(AddressType, 2)) dlg;
+        enum isSolidBody = true;
+        FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+        {
+            FillValue result = dlg(fWidth, begin);
+            assert(fWidth > 1 || result != FillValue.mixed);
+            with (FillValue) final switch (result)
+            {
+            case mixed:
+                return mixed;
+            case allTrue:
+                return none;
+            case none:
+                return allTrue;
+            }
+        }
+    }
+
+    static auto conjunction_body(T...)(T bodies)
+    {
+        return populate_variadic_body!(_conjunction_body, T)(bodies);
+    }
+
+    static struct _conjunction_body(uint num, T...)
+    {
+        enum isSolidBody = true;
+        FillValue delegate(AddressType, Vector!(AddressType, 2))[num] bodies;
+        T aux;
+        FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+        {
+            auto result = FillValue.allTrue;
+            foreach (i, b; bodies)
+            {
+                FillValue dresult = b(fWidth, begin);
+                if (dresult == FillValue.none)
+                {
+                    import std.algorithm;
+                    bringToFront(bodies[0 .. i], bodies[i .. i + 1]);
+                    return dresult;
+                }
+                if (dresult == FillValue.mixed)
+                    result = dresult;
+            }
+            return result;
+        }
+    }
+
+    static auto populate_variadic_body(alias R, T...)(T bodies)
     {
         import std.functional;
-        _UnionBody!(bodies.length, Filter!(templateNot!isPointer, T[])) result;
+        R!(bodies.length, Filter!(templateNot!isPointer, T[])) result;
         static foreach (i, dlg; bodies)
         {
             static assert(dlg.isSolidBody);
@@ -765,30 +815,29 @@ struct SedecTree(AddressType, uint divisor)
         return result;
     }
 
-    static struct _UnionBody(uint num, T...)
+    static auto disjunction_body(T...)(T bodies)
+    {
+        return populate_variadic_body!(_disjunction_body, T)(bodies);
+    }
+
+    alias union_body = disjunction_body;
+    alias intersection_body = conjunction_body;
+
+    static struct _disjunction_body(uint num, T...)
     {
         enum isSolidBody = true;
-        T aux;
         FillValue delegate(AddressType, Vector!(AddressType, 2))[num] bodies;
-        uint vCache = 0;
+        T aux;
         FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
         {
             auto result = FillValue.none;
-            FillValue dresult = bodies[vCache](fWidth, begin);
-            if (dresult == FillValue.allTrue)
-            {
-                return dresult;
-            }
-            if (dresult == FillValue.mixed)
-                result = dresult;
             foreach (i, b; bodies)
             {
-                if (i == vCache)
-                    continue;
-                dresult = b(fWidth, begin);
+                FillValue dresult = b(fWidth, begin);
                 if (dresult == FillValue.allTrue)
                 {
-                    vCache = cast(uint)i;
+                    import std.algorithm;
+                    bringToFront(bodies[0 .. i], bodies[i .. i + 1]);
                     return dresult;
                 }
                 if (dresult == FillValue.mixed)
@@ -798,50 +847,66 @@ struct SedecTree(AddressType, uint divisor)
         }
     }
 
-    void unionFill(T...)(T bodies, bool value)
+    static auto difference_body(A, B)(A bodyA, B bodyB)
     {
-        static foreach (i, b; bodies)
-            static assert(b.isSolidBody, format("argument %s is not a solid body", i));
-        UnionBody!T b;
-        static foreach (i, bd; bodies)
-            b.bodies[i] = bd;
-        genericFill(b, value);
-    }
-
-    static _DifferenceBody!(A, B) DifferenceBody(A, B)(A bodyA, B bodyB)
-    {
-        _DifferenceBody!(A, B) result;
+        _difference_body!(A, B) result;
         result.bodyA = bodyA;
         result.bodyB = bodyB;
         return result;
     }
 
-    static struct _DifferenceBody(A, B)
+    static struct _difference_body(A, B)
     {
         enum isSolidBody = true;
         A bodyA;
         B bodyB;
+        int sel;
         FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
         {
-            FillValue result;
-            static if (isPointer!A)
-                result = (*bodyA)(fWidth, begin);
-            else
-                result = bodyA(fWidth, begin);
+            bool first = true;
 
-            if (result == FillValue.none)
-                return result;
-
+            FillValue aresult;
             FillValue bresult;
-            static if (isPointer!A)
-                bresult = (*bodyB)(fWidth, begin);
+            FillValue result;
+            bool evalA()
+            {
+                static if (isPointer!A)
+                    aresult = (*bodyA)(fWidth, begin);
+                else
+                    aresult = bodyA(fWidth, begin);
+
+                if (aresult == FillValue.none)
+                {
+                    sel = 0;
+                    result = aresult;
+                    return true;
+                }
+                return false;
+            }
+            bool evalB()
+            {
+                static if (isPointer!B)
+                    bresult = (*bodyB)(fWidth, begin);
+                else
+                    bresult = bodyB(fWidth, begin);
+
+                if (bresult == FillValue.allTrue)
+                {
+                    sel = 1;
+                    result = FillValue.none;
+                    return true;
+                }
+                return false;
+            }
+            if (sel == 0)
+            {
+                if (evalA || evalB) return result;
+            }
             else
-                bresult = bodyB(fWidth, begin);
-
-            if (bresult == FillValue.allTrue)
-                return FillValue.none;
-
-            if (result == FillValue.allTrue && bresult == FillValue.none)
+            {
+                if (evalB || evalA) return result;
+            }
+            if (aresult == FillValue.allTrue && bresult == FillValue.none)
                 return FillValue.allTrue;
             return FillValue.mixed;
         }
@@ -852,7 +917,7 @@ struct SedecTree(AddressType, uint divisor)
         static assert(bodyA.isSolidBody, "bodyA is not a solid body");
         static assert(bodyB.isSolidBody, "bodyB is not a solid body");
 
-        genericFill(DifferenceBody(bodyA, bodyB), value);
+        genericFill(difference_body(bodyA, bodyB), value);
     }
 
     Checker checkerPattern()

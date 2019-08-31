@@ -36,7 +36,7 @@ void main(string[] args)
     import sedectree;
 
     alias tty = uint;
-    auto tree = sedecTree!(tty)();
+    auto tree = sedecTree!(tty, 8)();
 
     Vector!(ulong, 2)[] points = new Vector!(ulong, 2)[100];
 
@@ -152,7 +152,7 @@ void main(string[] args)
     window.glfwSetScrollCallback(&scrollCallback);
     window.glfwSetKeyCallback(&keyCallback);
 
-        enum scale = 100;
+        enum scale = 20;
             nvg.beginFrame(width, height);
             scope(exit) nvg.endFrame();
 import arsd.color;
@@ -171,20 +171,21 @@ import arsd.color;
         import std.range;
         auto body1 = tree.Rectangle(cast(Vector!(tty, 2))vec2ul(100*scale, 100*scale), cast(Vector!(tty, 2))vec2ul(scale*(1500-100), scale*(1000-100)));
 
-        static foreach (i; iota(0, 15, 1))
+        static foreach (i; iota(0, 50, 1))
         {
             mixin(format(q{
             auto bodyA%1$s =
-                tree.Circle(cast(Vector!(tty, 2))vec2ul(scale*(500+%1$s*50),scale*500), cast(tty)(scale*(400-i*10)));
+                tree.Circle(cast(Vector!(tty, 2))vec2ul(scale*(500+%1$s*20),scale*500), cast(tty)(scale*(400-i*10)));
             auto bodyB%1$s =
-                tree.Circle(cast(Vector!(tty, 2))vec2ul(scale*(500+%1$s*50),scale*500), cast(tty)(scale*(395-i*10)));
-            auto ring%1$s = tree.DifferenceBody(bodyA%1$s, bodyB%1$s);
+                tree.Circle(cast(Vector!(tty, 2))vec2ul(scale*(500+%1$s*20),scale*500), cast(tty)(scale*(395-i*10)));
+            auto neg%1$s = tree.negation_body(bodyB%1$s);
+            auto ring%1$s = tree.conjunction_body(bodyA%1$s, neg%1$s);
             }, i));
         }
 
         mixin(format(q{
-        auto dif = tree.DifferenceBody(body1, tree.UnionBody(%(ring%s, %)));
-        }, iota(0, 10, 1)));
+        auto dif = tree.difference_body(body1, tree.disjunction_body(%(ring%s, %)));
+        }, iota(0, 50, 1)));
 
         auto bbb = MonoTime.currTime;
         writefln("begin time: %s", bbb - trig);
@@ -193,7 +194,7 @@ import arsd.color;
         writefln("render time: %s", MonoTime.currTime - bbb);
         writefln("end time: %s", MonoTime.currTime - trig);
         import arsd.png;
-
+        //assert(0);
         ZSTD_CCtx* cctx = ZSTD_createCCtx;
         ZSTD_inBuffer in_buf;
         ZSTD_outBuffer out_buf;

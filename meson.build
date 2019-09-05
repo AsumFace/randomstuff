@@ -17,6 +17,11 @@ behold_sources = [
   'source/main.d',
   'source/word.d',
   'source/zstdc.d',
+  'source/supersequence.d',
+  'source/arbint.d',
+  'source/morse.d',
+  'source/xxhash.d',
+  'source/fnv.d'
 ]
 
 inc_dirs = [

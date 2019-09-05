@@ -1,3 +1,7 @@
+/++
+Helper functions for optimization purposes
++/
+
 module required;
 
 version(LDC)

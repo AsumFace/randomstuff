@@ -6,6 +6,11 @@
 |      https://www.boost.org/LICENSE_1_0.txt                   |
 \+------------------------------------------------------------+/
 
+/++
+This module provides a flexible `Word`-type. A `Word` contains an arbitrary number of arbitrary base (max 2^64) digits.
+The digits are packed in memory with some alignment considerations for a good speed/size tradeoff.
++/
+
 module word;
 
 import required;
@@ -35,7 +40,7 @@ private template bitsNeeded(ulong num)
         enum bitsNeeded = ceilLog2(num + 1);
 }
 
-private alias StoreTypes = AliasSeq!(ubyte, ushort, uint, ulong); // shall be sorted short to large!
+private alias StoreTypes = AliasSeq!(ubyte, ushort, uint, ulong); // shall be sorted small to large!
 
 private ulong ceilDiv(ulong a, ulong b) pure @safe
 {
@@ -353,7 +358,7 @@ struct Word(ulong N, ulong B = 1)
                 {
                     foreach (i; 0 .. N)
                         result[i] = ~result[i];
-                }            
+                }
             }
             return result;
         }

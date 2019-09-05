@@ -8,6 +8,11 @@
 
 module rtree;
 
+/++
+This module implements an R-tree with some algorithmic flavoring of the R*-tree. Basic functionality exists but
+must be improved and extended later on to be more useful.
++/
+
 version(LittleEndian)
 {}
 else
@@ -1647,7 +1652,7 @@ enum Color : ubyte
     blue = 1
 }
 
-void finn()
+private void finn() // for testing only, do not use
 {
     import std.string;
     import std.format;

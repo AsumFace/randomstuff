@@ -6,6 +6,11 @@
 |      https://www.boost.org/LICENSE_1_0.txt                   |
 \+------------------------------------------------------------+/
 
+/++
+This file only contains experiments and testing code, do not expect it to do anything useful.
++/
+
+
 import core.sys.posix.sys.mman;
 import core.sys.linux.sys.mman;
 import core.sys.posix.poll;

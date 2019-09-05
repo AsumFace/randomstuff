@@ -6,6 +6,10 @@
 |    version 2.1. See accompanying file LGPLv2_1.              |
 \+------------------------------------------------------------+/
 
+/++
+Header port of libfuse, including static bindings. Some types (e. g. ubyte/char) may still be inaccurate.
++/
+
 module fuse;
 
 import core.sys.posix.sys.types : off_t;

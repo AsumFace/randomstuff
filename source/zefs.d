@@ -6,6 +6,14 @@
 |      https://www.boost.org/LICENSE_1_0.txt                   |
 \+------------------------------------------------------------+/
 
+
+/++
+This module is intended to implement a minimal filesystem with transparent compression but no permanent storage
+  capability. Although libfuse says that all functions are optional, this filesystem, as of now, does not appear
+  to work usefully at all.
++/
+
+
 module zefs;
 import zstdc;
 import fuse;

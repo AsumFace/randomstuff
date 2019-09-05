@@ -6,6 +6,10 @@
 |  See accompanying file BSD_3clause.                          |
 \+------------------------------------------------------------+/
 
+/++
+Direct static bindings to the zstd C-library. Some parts may still be missing.
++/
+
 module zstdc;
 
 extern(C):

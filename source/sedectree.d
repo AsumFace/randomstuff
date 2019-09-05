@@ -6,6 +6,13 @@
 |      https://www.boost.org/LICENSE_1_0.txt                   |
 \+------------------------------------------------------------+/
 
+
+/++
+This module provides a datastructure meant to be used for in-memory manipulations of huge, sparsely filled,
+  binary images. It is in experimental state and might change substantially, but the basic functionality is
+  there and works.
++/
+
 module sedectree;
 
 import std.traits;

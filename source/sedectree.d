@@ -527,9 +527,8 @@ struct SedecTree(AddressType, uint divisor)
         aCache.node = null;
     }
 
-    static struct Rectangle
+    static class Rectangle : solid_body
     {
-        enum isSolidBody = true;
         Vector!(AddressType, 2) low;
         Vector!(AddressType, 2) high;
 
@@ -539,7 +538,7 @@ struct SedecTree(AddressType, uint divisor)
             this.high = high;
         }
 
-        FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+        override FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
         {
             if (fWidth == 1)
                 return begin.x >= low.x && begin.x <= high.x && begin.y >= low.y && begin.y <= high.y
@@ -571,9 +570,8 @@ struct SedecTree(AddressType, uint divisor)
         }
     }
 
-    static struct Circle
+    static class Circle : solid_body
     {
-        enum isSolidBody = true;
         Vector!(AddressType, 2) center;
         AddressType radius;
 
@@ -583,7 +581,7 @@ struct SedecTree(AddressType, uint divisor)
             this.radius = radius;
         }
 
-        FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+        override FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
         {
             import std.algorithm;
             alias V = Vector!(Signed!AddressType, 2);
@@ -729,32 +727,21 @@ struct SedecTree(AddressType, uint divisor)
         }
     }
 
-    static auto negation_body(T)(T body)
+    static class solid_body
     {
-        _negation_body!T result;
-        static if (!isPointer!T)
-        {
-            result.body = body;
-            result.dlg = &(result.body.opCall);
-        }
-        else
-        {
-            assert(body !is null);
-            result.dlg = &((*body).opCall);
-        }
-        return result;
+        abstract FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin);
     }
 
-    static struct _negation_body(T)
+    static class negation_body : solid_body
     {
-        static assert(T.isSolidBody);
-        static if (!isPointer!T)
-            T body;
-        FillValue delegate(AddressType, Vector!(AddressType, 2)) dlg;
-        enum isSolidBody = true;
-        FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+        solid_body base_body;
+        this(solid_body bb)
         {
-            FillValue result = dlg(fWidth, begin);
+            base_body = bb;
+        }
+        override FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+        {
+            FillValue result = base_body(fWidth, begin);
             assert(fWidth > 1 || result != FillValue.mixed);
             with (FillValue) final switch (result)
             {
@@ -768,26 +755,42 @@ struct SedecTree(AddressType, uint divisor)
         }
     }
 
-    static auto conjunction_body(T...)(T bodies)
+    import std.algorithm : among;
+    static FillValue conditional_negate(FillValue result, bool q)
+        in(result.among(EnumMembers!FillValue))
     {
-        return populate_variadic_body!(_conjunction_body, T)(bodies);
+        if (!q)
+            return result;
+        with (FillValue) final switch (result)
+        {
+        case mixed:
+            return mixed;
+        case allTrue:
+            return none;
+        case none:
+            return allTrue;
+        }
     }
 
-    static struct _conjunction_body(uint num, T...)
+    static class conjunction_body : solid_body
     {
-        enum isSolidBody = true;
-        FillValue delegate(AddressType, Vector!(AddressType, 2))[num] bodies;
-        T aux;
-        FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+        solid_body[] base_bodies;
+        bool[] negations;
+        ubyte[] indices;
+        this(solid_body[] bb...)
+        {
+            base_bodies ~= bb;
+        }
+        override FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
         {
             auto result = FillValue.allTrue;
-            foreach (i, b; bodies)
+            foreach (i, b; base_bodies)
             {
-                FillValue dresult = b(fWidth, begin);
+                FillValue dresult = conditional_negate(base_bodies[indices[i]](fWidth, begin), negations[indices[i]]);
                 if (dresult == FillValue.none)
                 {
                     import std.algorithm;
-                    bringToFront(bodies[0 .. i], bodies[i .. i + 1]);
+                    bringToFront(indices[0 .. i], indices[i .. i + 1]);
                     return dresult;
                 }
                 if (dresult == FillValue.mixed)
@@ -795,49 +798,26 @@ struct SedecTree(AddressType, uint divisor)
             }
             return result;
         }
-    }
-
-    static auto populate_variadic_body(alias R, T...)(T bodies)
-    {
-        import std.functional;
-        R!(bodies.length, Filter!(templateNot!isPointer, T[])) result;
-        static foreach (i, dlg; bodies)
-        {
-            static assert(dlg.isSolidBody);
-            static if (isPointer!(typeof(dlg)))
-                result.bodies[i] = &(dlg.opCall);
-            else
-            {
-                result.aux[Filter!(templateNot!isPointer, T[0 .. i]).length] = dlg;
-                result.bodies[i] = &(result.aux[Filter!(templateNot!isPointer, T[0 .. i]).length].opCall);
-            }
-        }
-        return result;
-    }
-
-    static auto disjunction_body(T...)(T bodies)
-    {
-        return populate_variadic_body!(_disjunction_body, T)(bodies);
     }
 
     alias union_body = disjunction_body;
     alias intersection_body = conjunction_body;
 
-    static struct _disjunction_body(uint num, T...)
+    static class disjunction_body : solid_body
     {
-        enum isSolidBody = true;
-        FillValue delegate(AddressType, Vector!(AddressType, 2))[num] bodies;
-        T aux;
-        FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+        solid_body[] base_bodies;
+        bool[] negations;
+        ubyte[] indices;
+        override FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
         {
             auto result = FillValue.none;
-            foreach (i, b; bodies)
+            foreach (i, b; base_bodies)
             {
-                FillValue dresult = b(fWidth, begin);
+                FillValue dresult = conditional_negate(base_bodies[indices[i]](fWidth, begin), negations[indices[i]]);
                 if (dresult == FillValue.allTrue)
                 {
                     import std.algorithm;
-                    bringToFront(bodies[0 .. i], bodies[i .. i + 1]);
+                    bringToFront(indices[0 .. i], indices[i .. i + 1]);
                     return dresult;
                 }
                 if (dresult == FillValue.mixed)
@@ -847,21 +827,17 @@ struct SedecTree(AddressType, uint divisor)
         }
     }
 
-    static auto difference_body(A, B)(A bodyA, B bodyB)
+    static class difference_body : solid_body
     {
-        _difference_body!(A, B) result;
-        result.bodyA = bodyA;
-        result.bodyB = bodyB;
-        return result;
-    }
-
-    static struct _difference_body(A, B)
-    {
-        enum isSolidBody = true;
-        A bodyA;
-        B bodyB;
+        solid_body bodyA;
+        solid_body bodyB;
         int sel;
-        FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
+        this(solid_body a, solid_body b)
+        {
+            bodyA = a;
+            bodyB = b;
+        }
+        override FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
         {
             bool first = true;
 
@@ -870,11 +846,7 @@ struct SedecTree(AddressType, uint divisor)
             FillValue result;
             bool evalA()
             {
-                static if (isPointer!A)
-                    aresult = (*bodyA)(fWidth, begin);
-                else
-                    aresult = bodyA(fWidth, begin);
-
+                aresult = bodyA(fWidth, begin);
                 if (aresult == FillValue.none)
                 {
                     sel = 0;
@@ -885,11 +857,7 @@ struct SedecTree(AddressType, uint divisor)
             }
             bool evalB()
             {
-                static if (isPointer!B)
-                    bresult = (*bodyB)(fWidth, begin);
-                else
-                    bresult = bodyB(fWidth, begin);
-
+                bresult = bodyB(fWidth, begin);
                 if (bresult == FillValue.allTrue)
                 {
                     sel = 1;
@@ -909,31 +877,6 @@ struct SedecTree(AddressType, uint divisor)
             if (aresult == FillValue.allTrue && bresult == FillValue.none)
                 return FillValue.allTrue;
             return FillValue.mixed;
-        }
-    }
-
-    void differenceFill(A, B)(A bodyA, B bodyB, bool value)
-    {
-        static assert(bodyA.isSolidBody, "bodyA is not a solid body");
-        static assert(bodyB.isSolidBody, "bodyB is not a solid body");
-
-        genericFill(difference_body(bodyA, bodyB), value);
-    }
-
-    Checker checkerPattern()
-    {
-        Checker result;
-        return result;
-    }
-
-    struct Checker
-    {
-        FillValue opCall(AddressType fWidth, Vector!(AddressType, 2) begin)
-        {
-            if (fWidth == 1)
-                return (begin.x ^ begin.y) & 1 ? FillValue.allTrue : FillValue.none;
-            else
-                return FillValue.mixed;
         }
     }
 }

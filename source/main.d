@@ -169,23 +169,32 @@ import arsd.color;
         tree.window = window;
 
         import std.range;
-        auto body1 = tree.Rectangle(cast(Vector!(tty, 2))vec2ul(100*scale, 100*scale), cast(Vector!(tty, 2))vec2ul(scale*(1500-100), scale*(1000-100)));
+        auto body1 = new tree.Rectangle(cast(Vector!(tty, 2))vec2ul(100*scale, 100*scale), cast(Vector!(tty, 2))vec2ul(scale*(1500-100), scale*(1000-100)));
 
+        auto rings = new tree.disjunction_body;
         static foreach (i; iota(0, 50, 1))
         {
             mixin(format(q{
             auto bodyA%1$s =
-                tree.Circle(cast(Vector!(tty, 2))vec2ul(scale*(500+%1$s*20),scale*500), cast(tty)(scale*(400-i*10)));
+                new tree.Circle(cast(Vector!(tty, 2))vec2ul(scale*(500+%1$s*20),scale*500), cast(tty)(scale*(400-i*10)));
             auto bodyB%1$s =
-                tree.Circle(cast(Vector!(tty, 2))vec2ul(scale*(500+%1$s*20),scale*500), cast(tty)(scale*(395-i*10)));
-            auto neg%1$s = tree.negation_body(bodyB%1$s);
-            auto ring%1$s = tree.conjunction_body(bodyA%1$s, neg%1$s);
+                new tree.Circle(cast(Vector!(tty, 2))vec2ul(scale*(500+%1$s*20),scale*500), cast(tty)(scale*(395-i*10)));
+            auto ring%1$s = new tree.conjunction_body;
+            ring%1$s.base_bodies ~= [bodyA%1$s, bodyB%1$s];
+            ring%1$s.negations ~= [false, true];
+            ring%1$s.indices ~= cast(ubyte)ring%1$s.indices.length;
+            ring%1$s.indices ~= cast(ubyte)ring%1$s.indices.length;
+            rings.base_bodies ~= ring%1$s;
+            rings.negations ~= false;
+            rings.indices ~= cast(ubyte)rings.indices.length;
             }, i));
         }
 
-        mixin(format(q{
-        auto dif = tree.difference_body(body1, tree.disjunction_body(%(ring%s, %)));
-        }, iota(0, 50, 1)));
+        auto dif = new tree.conjunction_body(body1, rings);
+        dif.negations = [false, true];
+        dif.indices ~= cast(ubyte)dif.indices.length;
+        dif.indices ~= cast(ubyte)dif.indices.length;
+
 
         auto bbb = MonoTime.currTime;
         writefln("begin time: %s", bbb - trig);
@@ -193,8 +202,8 @@ import arsd.color;
 
         writefln("render time: %s", MonoTime.currTime - bbb);
         writefln("end time: %s", MonoTime.currTime - trig);
-        import arsd.png;
         //assert(0);
+        import arsd.png;
         ZSTD_CCtx* cctx = ZSTD_createCCtx;
         ZSTD_inBuffer in_buf;
         ZSTD_outBuffer out_buf;

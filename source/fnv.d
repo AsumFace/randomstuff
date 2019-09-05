@@ -6,6 +6,10 @@
 |      https://www.boost.org/LICENSE_1_0.txt                   |
 \+------------------------------------------------------------+/
 
+/++
+This module implements all common FNV hash function for all hash lengths.
++/
+
 module fnvhash;
 
 import required;

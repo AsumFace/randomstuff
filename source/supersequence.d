@@ -6,6 +6,10 @@
 |      https://www.boost.org/LICENSE_1_0.txt                   |
 \+------------------------------------------------------------+/
 
+/++
+This module provides functionality to find a short supersequence from an arbitrary number of input sequences.
++/
+
 module supersequence;
 
 import required;

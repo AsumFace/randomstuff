@@ -6,6 +6,10 @@
 |      https://www.boost.org/LICENSE_1_0.txt                   |
 \+------------------------------------------------------------+/
 
+/++
+This module implements the 32 and 64 bit version of xxHash.
++/
+
 module xxhash;
 import std.array : empty;
 private static immutable uint[] primes32 = [2654435761u, 2246822519u, 3266489917u, 668265263u, 374761393u];

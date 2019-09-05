@@ -6,6 +6,12 @@
 |      https://www.boost.org/LICENSE_1_0.txt                   |
 \+------------------------------------------------------------+/
 
+/++
+This module provides statically known width, arbitrarily wide integers. It mostly relies on the intrinsic capability
+of LLVM, although a slow fallback is implemented as well (not well tested). This is probably still buggy, use at
+your own risk.
++/
+
 
 module arbint;
 

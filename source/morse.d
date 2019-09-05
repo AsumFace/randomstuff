@@ -6,6 +6,10 @@
 |      https://www.boost.org/LICENSE_1_0.txt                   |
 \+------------------------------------------------------------+/
 
+/++
+This module is an experiment for signal processing pipelines with a pull-based approach. It is fundamentally
+structured with nodes the same as similar software like gnuradio.
++/
 
 module morse;
 

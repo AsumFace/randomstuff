@@ -21,7 +21,7 @@ import std.experimental.allocator.gc_allocator;
 import std.experimental.allocator.mallocator;
 import core.exception : OutOfMemoryError;
 
-T[] findSupersequence(T)(T[] arrs...)
+T findSupersequence(T)(T[] arrs...)
 {
     return findSupersequence(GCAllocator.instance, arrs);
 }
@@ -48,7 +48,7 @@ Overlap!T calcOverlap(T)(T a, T b) @safe pure
             import std.algorithm.comparison : min;
             if (a[i .. $].length < result.worth) // worth can't be further improved in this run
                 break;
-            if(zip(a[i .. $], b[]).all!"a[0] == a[1]")
+            if (zip(a[i .. $], b[]).all!"a[0] == a[1]")
             {
                 immutable worth = min(b[].length, a[i .. $].length);
                 result = typeof(return)(a, b, i, worth);
@@ -110,9 +110,9 @@ private Overlap!T findBestPair(T)(const(T[]) arr) @safe
 private Unqual!(ElementType!T)[] iterativeMerging(T, UA, TA)(ref UA userAllocator, ref TA tmpAllocator, T[] tmp)
 {
     import std.algorithm.comparison : max;
-    import std.range : take, drop, enumerate, ElementType;
+    import std.range : take, drop, enumerate, ElementType, assumeSorted;
     import std.algorithm.mutation : copy, remove, bringToFront;
-    import std.algorithm.sorting : multiSort, assumeSorted, isSorted, sort;
+    import std.algorithm.sorting : multiSort, isSorted, sort;
     import std.algorithm.searching : find;
     import std.algorithm.iteration : map, sum, joiner;
     import std.typecons : Tuple, Ternary;
@@ -193,7 +193,7 @@ auto findSupersequence(Allocator, T)(ref Allocator allocator, const(T[]) arrs...
     import std.experimental.allocator.building_blocks.allocator_list;
     import std.experimental.allocator.building_blocks.bitmapped_block;
 
-    T[] tmp = makeArray!(T)(Mallocator.instance, arrs);
+    T[] tmp = makeArray!(T)(Mallocator.instance, arrs[]);
     if (tmp is null)
         throw new OutOfMemoryError;
     const(T[]) baseArray = tmp[];

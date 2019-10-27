@@ -360,7 +360,7 @@ struct Vector(T, int N)
         deprecated("Use squaredMagnitude instead") alias squaredLength = squaredMagnitude;
         /// Squared Euclidean length of the Vector
         /// Returns: squared length.
-        @nogc T squaredMagnitude() pure const nothrow
+        @nogc T squaredMagnitude()() pure const nothrow
         {
             T sumSquares = 0;
             mixin(generateLoopCode!("sumSquares += v[@] * v[@];", N)());
@@ -369,7 +369,7 @@ struct Vector(T, int N)
 
         /// Squared Euclidean distance between this vector and another one
         /// Returns: squared Euclidean distance.
-        @nogc T squaredDistanceTo(Vector v) pure const nothrow
+        @nogc T squaredDistanceTo(Vector v)() pure const nothrow
         {
             return (v - this).squaredMagnitude();
         }

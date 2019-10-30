@@ -36,7 +36,7 @@ import std.range;
 import zstdc;
 import std.experimental.allocator;
 
-void main(string[] args)
+void _main(string[] args)
 {
     import sedectree;
 

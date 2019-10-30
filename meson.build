@@ -21,7 +21,8 @@ behold_sources = [
   'source/arbint.d',
   'source/morse.d',
   'source/xxhash.d',
-  'source/fnv.d'
+  'source/fnv.d',
+  'source/lighting.d'
 ]
 
 inc_dirs = [
@@ -29,7 +30,9 @@ inc_dirs = [
     'subprojects/bindbc-glfw/source',
     'subprojects/bindbc-loader/source',
     'subprojects/bindbc-opengl/source',
-    'subprojects/bindbc-freetype/source'
+    'subprojects/bindbc-freetype/source',
+    'subprojects/mir-algorithm/source',
+    'subprojects/mir-core/source'
 ]
 
 ed_versions = [

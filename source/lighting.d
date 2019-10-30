@@ -10,6 +10,7 @@
 import mir.ndslice;
 import cgfm.math;
 import std.typecons;
+import xxhash;
 
 alias color_t = Vector!(ubyte, 3);
 
@@ -117,7 +118,9 @@ struct bounded_access_t(S, F)
 
     element_t fallback;
 
-    element_t opIndex(size_t[2] c...)
+    static element_t fb;
+
+    ref element_t opIndex(size_t[2] c...)
     {
         bool within_bounds = true;
         static foreach (i; 0 .. slice.N)
@@ -129,17 +132,19 @@ struct bounded_access_t(S, F)
         if (within_bounds)
             return slice[c];
         else
-            return fallback;
+            return fb = fallback;
     }
 
-    element_t opIndexAssign(T)(T val, size_t[slice.N] c...)
+    ref element_t opIndexAssign(T)(T val, size_t[slice.N] c...)
     {
         bool within_bounds = true;
         static foreach (i; 0 .. slice.N)
             if (c[i] >= slice.length!i)
                 within_bounds = false;
         if (within_bounds)
+        {
             return slice[c] = val;
+        }
         else
             return fallback;
     }
@@ -203,6 +208,23 @@ class vert_mirror_t : light_affector
         swap(r[dir(0, -1,1)], r[dir(0,1,1)]);
         swap(r[dir(0, -1,0)], r[dir(0,1,0)]);
         swap(r[dir(0,-1,-1)], r[dir(0,1,-1)]);
+        r[dir(0, 0, -1)] = color_t.init;
+        r[dir(0, 0, 1)] = color_t.init;
+        egress = r;
+    }
+}
+
+class hori_mirror_t : light_affector
+{
+    void compute(ref in const(light_field) ingress, out light_field egress)
+    {
+        light_field r = ingress;
+        import std.algorithm : swap;
+        swap(r[dir(0, 1,1)], r[dir(0,1,-1)]);
+        swap(r[dir(0, 0,1)], r[dir(0,0,-1)]);
+        swap(r[dir(0,-1,1)], r[dir(0,-1,-1)]);
+        r[dir(0, -1, 0)] = color_t.init;
+        r[dir(0, 1, 0)] = color_t.init;
         egress = r;
     }
 }
@@ -216,42 +238,81 @@ void main()
 
     auto air = new air_t;
     auto light_source = new light_source_t;
-    auto mirror = new vert_mirror_t;
+    auto vmirror = new vert_mirror_t;
+    auto hmirror = new hori_mirror_t;
 
     material_table.each!((ref n) => n = air);
-    ndiota(1, 1).each!((c)
+    ndiota(10, 1).each!((c)
     {
         material_table[(vec2ul(c)+vec2ul(200,200)).v[]] = light_source;
     });
 
     ndiota(1, 400).each!((c)
     {
-        material_table[(vec2ul(c)+vec2ul(202,50)).v[]] = mirror;
-        material_table[(vec2ul(c)+vec2ul(198,50)).v[]] = mirror;
+        material_table[(vec2ul(c)+vec2ul(250,50)).v[]] = vmirror;
+        material_table[(vec2ul(c)+vec2ul(198,50)).v[]] = vmirror;
     });
-    foreach (i; 0 .. 200)
+    ndiota(52, 1).each!((c)
+    {
+        material_table[(vec2ul(c)+vec2ul(198,50)).v[]] = hmirror;
+        material_table[(vec2ul(c)+vec2ul(198,450)).v[]] = hmirror;
+    });
+    foreach (i; 0 .. 2000)
     {
         import std.stdio;
         ndiota(map_data.lengths).each!((c) // specific egress calculation
         {
             material_table[c].compute(ingress_data[c], egress_data[c]);
+            ingress_data[c] = light_field.init;
         });
 
         ndiota(map_data.lengths).each!((c) // generic ingress calculation
         {
             foreach (d; dirs[])
             {
-                Vector!(uint, 3) ingress_result;
-                foreach (rot; [0, -1, 2])
+                foreach (channel; 0 .. 3)
                 {
-                    auto igs = cast(Vector!(uint, 3))egress_data
-                        .bounded_access(color_t.init)[(vec2ul(c) - d).v[]][dir(rot, d)];
-                    if (rot == 0) // axis aligned
-                        ingress_result += (igs)*8/16;
-                    else
-                        ingress_result += (igs)*4/16;
+                    int energy = egress_data[c][dir(0, d)][channel];
+                    while (energy > 2) // terminates after max 3 iterations (empirically tested)
+                    {
+                        //uint primary = energy * 12 / 32; // approx 1/(1/sqrt(2)+2)
+                        uint primary = energy * 6_197_471 / (1u << 24); // approx 1/(1/sqrt(2)+2)
+                        uint secondary = energy * 4_382_274 / (1u << 24); // approx (1/sqrt(2)+2)/sqrt(2)
+                        foreach (rot; [0, -1, 1])
+                        {
+                            uint val;
+
+                            if (rot == 0)
+                                val = primary;
+                            else
+                                val = secondary;
+                            energy -= val;
+
+                            uint prev_val = ingress_data.bounded_access(color_t.init)[(vec2ul(c) + dirs[dir(1, d)]).v[]][dir(rot, d)][channel];
+
+                            if (cast(ubyte)(prev_val + val) < prev_val)
+                            {
+                                energy += 255 - prev_val;
+                                val = 255;
+                            }
+                            else
+                                val = prev_val + val;
+                            ingress_data.bounded_access(color_t.init)[(vec2ul(c) + dirs[dir(1, d)]).v[]][dir(rot, d)][channel] = cast(ubyte)val;
+                        }
+                        assert(energy >= 0);
+                    }
+                    while (energy > 0) // distribute remaining energy randomly
+                    {
+                        import std.random;
+                        int rot = xxHash!32((*cast(ubyte[c.sizeof]*)&c)[], i) % 3 - 1;
+                        uint prev_val = ingress_data.bounded_access(color_t.init)[(vec2ul(c) + dirs[dir(1, d)]).v[]][dir(rot, d)][channel];
+                        if (prev_val < 255)
+                            prev_val += 1;
+                        ingress_data.bounded_access(color_t.init)[(vec2ul(c) + dirs[dir(1, d)]).v[]][dir(rot, d)][channel] = cast(ubyte)prev_val;
+                        energy -= 1;
+                        assert(energy >= 0);
+                    }
                 }
-                ingress_data[c][dir(0, d)] = saturate(ingress_result);
             }
         });
 

@@ -341,9 +341,9 @@ struct Vector(T, int N)
         }
 
         /// vec[a..b]
-        @nogc T[] opSlice(int a, int b) pure nothrow
+        @nogc T[] opSlice(size_t[2] s...) pure nothrow
         {
-            return v[a..b];
+            return v[s[0]..s[1]];
         }
 
         @nogc const(T)[] opSlice() const pure nothrow
@@ -352,9 +352,9 @@ struct Vector(T, int N)
         }
 
         /// vec[a..b]
-        @nogc const(T)[] opSlice(int a, int b) const pure nothrow
+        @nogc const(T)[] opSlice(size_t[2] s...) const pure nothrow
         {
-            return v[a..b];
+            return v[s[0]..s[1]];
         }
 
         deprecated("Use squaredMagnitude instead") alias squaredLength = squaredMagnitude;
@@ -369,7 +369,7 @@ struct Vector(T, int N)
 
         /// Squared Euclidean distance between this vector and another one
         /// Returns: squared Euclidean distance.
-        @nogc T squaredDistanceTo(Vector v)() pure const nothrow
+        @nogc T squaredDistanceTo()(Vector v) pure const nothrow
         {
             return (v - this).squaredMagnitude();
         }

@@ -129,7 +129,7 @@ struct Sphere(T, int N)
 
         /// Sphere contains point test.
         /// Returns: true if the point is inside the sphere.
-        @nogc bool contains(in Sphere s) pure const nothrow
+        @nogc bool contains()(in Sphere s) pure const nothrow
         {
             if (s.radius > radius)
                 return false;
@@ -139,7 +139,7 @@ struct Sphere(T, int N)
         }
 
         /// Sphere vs point Euclidean distance squared.
-        @nogc T squaredDistanceTo(point_t p) pure const nothrow
+        @nogc T squaredDistanceTo()(point_t p) pure const nothrow
         {
             return center.squaredDistanceTo(p);
         }

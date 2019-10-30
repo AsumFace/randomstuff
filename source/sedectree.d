@@ -358,7 +358,7 @@ struct SedecTree(AddressType, uint divisor)
             }
             else if (result == ChildTypes.thisPtr) // just jump into the next lower division and repeat
                 return _opIndex(i1, i2, (*activeNode)[subIdx].thisPtr, begin + NT.fWidth * subIdx);
-            unreachable;
+            // unreachable; // this one is recognized by the compiler
         }
     }
 

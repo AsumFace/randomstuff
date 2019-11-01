@@ -148,7 +148,7 @@ struct bounded_access_t(S, F)
     }
 }
 
-alias light_field = Slice!(ubyte*, 2, Canonical);
+alias light_field = Slice!(ubyte*, 2, Universal);
 
 interface light_affector
 {
@@ -163,6 +163,14 @@ class light_source_t : light_affector
     }
 }
 
+void equalize(ref ubyte a, ref ubyte b)
+{
+    import std.math : sgn;
+    int diff = a - b;
+    a -= diff.sgn;
+    b += diff.sgn;
+}
+
 class air_t : light_affector
 {
     void compute(light_field ingress, light_field egress)
@@ -170,9 +178,27 @@ class air_t : light_affector
         //foreach (i1; 0 .. 8)
         //    foreach (i2; 0 .. 3)
         //        result[i1][i2] -= (result[i1][i2] > 0 ? 1 : 0);
-        import std.stdio;
-        import mir.utility : swap;
-        each!swap(ingress, egress);
+        foreach (c; 0 .. 3)
+        {
+            int[8] buf;
+            foreach (i; 0 .. 8)
+            {
+                while (ingress[i, c] > 2)
+                {
+                    uint primary = ingress[i, c] * 6_197_471 / (1u << 24); // approx 1/(1/sqrt(2)+2)
+                    uint secondary = ingress[i, c] * 4_382_274 / (1u << 24); // approx (1/sqrt(2)+2)/sqrt(2)
+                    ingress[i, c] -= primary + secondary * 2;
+                    buf[(i + 7) % 8] += secondary;
+                    buf[(i + 1) % 8] += secondary;
+                    buf[i] += primary;
+                }
+                buf[i] += ingress[i, c];
+            }
+            foreach (i; 0 .. 8)
+            {
+                egress[i, c] = cast(ubyte)(buf[i] > 255 ? 255 : buf[i]);
+            }
+        }
     }
 }
 
@@ -187,9 +213,26 @@ class vert_mirror_t : light_affector
         egress[dir(0,1,0), 0 .. $] = ingress[dir(0, -1,0), 0 .. $];
         egress[dir(0,1,-1), 0 .. $] = ingress[dir(0,-1,-1), 0 .. $];
         egress[dir(0,1,1), 0 .. $] = ingress[dir(0, -1,1), 0 .. $];
+        egress[dir(0, 0, -1), 0 .. $] = ingress[dir(0, 0, -1), 0 .. $];
+        egress[dir(0, 0, 1), 0 .. $] = ingress[dir(0, 0, 1), 0 .. $];
 
-        egress[dir(0, 0, -1), 0 .. $] = cast(ubyte)0;
-        egress[dir(0, 0, 1), 0 .. $] = cast(ubyte)0;
+    }
+}
+
+class vert_diffuse_t : light_affector
+{
+    void compute(light_field ingress, light_field egress)
+    {
+        import std.algorithm : swap;
+        egress[dir(0, -1,0), 0 .. $] = ingress[dir(0,1,0), 0 .. $];
+        egress[dir(0,-1,-1), 0 .. $] = ingress[dir(0,1,-1), 0 .. $];
+        egress[dir(0, -1,1), 0 .. $] = ingress[dir(0,1,1), 0 .. $];
+        egress[dir(0,1,0), 0 .. $] = ingress[dir(0, -1,0), 0 .. $];
+        egress[dir(0,1,-1), 0 .. $] = ingress[dir(0,-1,-1), 0 .. $];
+        egress[dir(0,1,1), 0 .. $] = ingress[dir(0, -1,1), 0 .. $];
+        egress[dir(0, 0, -1), 0 .. $] = ingress[dir(0, 0, -1), 0 .. $];
+        egress[dir(0, 0, 1), 0 .. $] = ingress[dir(0, 0, 1), 0 .. $];
+
     }
 }
 
@@ -214,8 +257,11 @@ void main()
     auto map_data = read_map("/tmp/field.png");
     immutable size_t color_cnt = 3;
     immutable size_t direction_cnt = 8;
-    auto ingress_data = slice!ubyte(map_data.length!0, map_data.length!1, direction_cnt, color_cnt);
-    auto egress_data = slice!ubyte(map_data.length!0, map_data.length!1, direction_cnt, color_cnt);
+    auto ingress_data_a = slice!ubyte(direction_cnt, map_data.length!1, map_data.length!0, color_cnt);
+    auto egress_data_a =  slice!ubyte(direction_cnt, map_data.length!1, map_data.length!0, color_cnt);
+    auto ingress_data = ingress_data_a.transposed!(2, 1, 0, 3);
+    auto egress_data = egress_data_a.transposed!(2, 1, 0, 3);
+
     auto material_table = slice!light_affector(map_data.lengths);
 
     auto air = new air_t;
@@ -231,14 +277,17 @@ void main()
 
     ndiota(1, 400).each!((c)
     {
-        material_table[(vec2ul(c)+vec2ul(250,50)).v[]] = vmirror;
         material_table[(vec2ul(c)+vec2ul(198,50)).v[]] = vmirror;
     });
-    ndiota(52, 1).each!((c)
+    ndiota(1, 150).each!((c)
+    {
+        material_table[(vec2ul(c)+vec2ul(220,50)).v[]] = vmirror;
+    });
+    /+ndiota(52, 1).each!((c)
     {
         material_table[(vec2ul(c)+vec2ul(198,50)).v[]] = hmirror;
         material_table[(vec2ul(c)+vec2ul(198,450)).v[]] = hmirror;
-    });
+    });+/
     foreach (i; 0 .. 2000)
     {
         import std.stdio;
@@ -257,25 +306,30 @@ void main()
             return true;
         }
 
-        ndiota(egress_data.lengths).each!((_input) // generic ingress calculation
+        //ndiota(egress_data.length!3, egress_data.length!0, egress_data.length!1, egress_data.length!2).each!((_input) // generic ingress calculation
+        foreach (int dir_e; 0 .. direction_cnt)
+        foreach (y; 0 .. egress_data.length!1)
+        foreach (x; 0 .. egress_data.length!0)
+        foreach (int color; 0 .. color_cnt)
         {
-            size_t x = _input[0];
-            size_t y = _input[1];
-            int dir_e = cast(int)_input[2];
+            //size_t x = _input[0];
+            //size_t y = _input[1];
+            //int dir_e = cast(int)_input[2];
             auto dir_v = dirs[dir_e];
 
-            int color = cast(int)_input[3];
+            //int color = cast(int)_input[3];
 
             if (!within_bounds((dir_v + vec2ul(x, y)).v[]))
-                return;
+                continue;
 
             int energy = egress_data[x, y, dir_e, color];
             while (energy > 2) // terminates after max 3 iterations
             {
                 //uint primary = energy * 12 / 32; // approx 1/(1/sqrt(2)+2)
-                uint primary = energy * 6_197_471 / (1u << 24); // approx 1/(1/sqrt(2)+2)
+                //uint primary = energy * 6_197_471 / (1u << 24); // approx 1/(1/sqrt(2)+2)
                 uint secondary = energy * 4_382_274 / (1u << 24); // approx (1/sqrt(2)+2)/sqrt(2)
-                foreach (rot; [0, -1, 1])
+                uint primary = energy;
+                foreach (rot; [0])
                 {
                     uint val;
 
@@ -302,7 +356,7 @@ void main()
 
             while (energy > 0)
             {
-                int rot = xxHash!32((cast(ubyte*)_input[].ptr)[0 .. _input.sizeof], i + energy) % 3 - 1;
+                int rot = 0;
                 Vector!(int, 2) shift = dirs[dir(rot, dir_v)];
                 Vector!(size_t, 2) target;
                 target.x = x;
@@ -317,7 +371,7 @@ void main()
                 }
                 energy -= 1;
             }
-        });
+        }
 
         ndiota(map_data.lengths).each!((c)
         {
@@ -333,18 +387,5 @@ void main()
         writeln(cnt);
         write_map(map_data, format!"/tmp/result%06d.png"(cnt++));
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
 }
 ulong cnt;
